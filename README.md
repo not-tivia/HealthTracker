@@ -1,4 +1,16 @@
-# HealthTracker
-Open source android app that does everything those other apps do but for free. Water Intake,  Calorie Intake w/ Meal tracking, Todo list, Weight loss tracker with photo support, Stretching, Exercises, Workout Routines, Cardio Tracking, Progressive Overload.
+# health_tracker
 
-Developed for Android and tested on OnePlus 11 Android 15+
+A new Flutter project.
+
+## Getting Started
+
+This project is a starting point for a Flutter application.
+
+A few resources to get you started if this is your first Flutter project:
+
+- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.
