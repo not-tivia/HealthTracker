@@ -58,14 +58,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
   Future<void> _loadHistory() async {
     final storage = context.read<StorageService>();
-    final history = storage.getExerciseHistory();
+    final history = await storage.getExerciseHistory();
     setState(() {
       _exerciseHistory = history;
       _isLoading = false;
     });
     for (int i = 0; i < widget.exercises.length; i++) {
-      // Use case-insensitive lookup for exercise history
-      final lastHistory = storage.findExerciseHistory(widget.exercises[i].name);
+      final lastHistory = history[widget.exercises[i].name];
       if (lastHistory != null) {
         // Use minWeight to help users complete full sets
         // This is especially helpful when user couldn't complete all sets last time
@@ -98,13 +97,21 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.routineName)),
+        appBar: AppBar(
+          title: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(widget.routineName),
+          ),
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.routineName),
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(widget.routineName),
+        ),
         leading: IconButton(icon: const Icon(Icons.close), onPressed: _confirmExit),
         actions: [
           Center(
@@ -153,77 +160,62 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
   }
 
+
   Widget _buildExerciseHeader() {
-    final storage = context.read<StorageService>();
-    final history = storage.findExerciseHistory(_currentExercise.name);
-    final targetWeight = history?.lastWeight ?? 0;
+    // Get progress indicator for consecutive goals met
+    final history = _exerciseHistory?[_currentExercise.name];
     final consecutiveGoals = history?.consecutiveGoalsMet ?? 0;
+    final progressText = '$consecutiveGoals/3';
+    final isAtTarget = consecutiveGoals >= 3;
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(_currentExercise.name, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        // Sets x Weight x Reps display
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            Flexible(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  targetWeight > 0
-                      ? '${_currentExercise.defaultSets} sets x ${targetWeight.toStringAsFixed(0)} lbs x ${_currentExercise.repsDisplay}'
-                      : '${_currentExercise.defaultSets} sets x ${_currentExercise.repsDisplay}',
-                  style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis,
-                ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '${_currentExercise.defaultSets} sets \u{00D7} ${_currentExercise.repsDisplay}',
+                style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w500),
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        // Muscle group and progress indicator row
-        Row(
-          children: [
             if (_currentExercise.muscleGroup != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(color: Colors.grey.shade800, borderRadius: BorderRadius.circular(20)),
                 child: Text(_currentExercise.muscleGroup ?? '', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
               ),
-            if (_currentExercise.muscleGroup != null)
-              const SizedBox(width: 8),
             // Progress indicator showing consecutive goals met
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: consecutiveGoals >= 3 
-                    ? Colors.green.withOpacity(0.2) 
-                    : Colors.grey.shade800,
+                color: isAtTarget ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(20),
-                border: consecutiveGoals >= 3 
-                    ? Border.all(color: Colors.green.withOpacity(0.5)) 
-                    : null,
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
-                    consecutiveGoals >= 3 ? Icons.trending_up : Icons.fitness_center,
+                    isAtTarget ? Icons.trending_up : Icons.flag_outlined,
                     size: 14,
-                    color: consecutiveGoals >= 3 ? Colors.green : Colors.grey.shade400,
+                    color: isAtTarget ? Colors.green : Colors.orange,
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    '$consecutiveGoals/3 sessions',
+                    progressText,
                     style: TextStyle(
-                      color: consecutiveGoals >= 3 ? Colors.green : Colors.grey.shade400,
+                      color: isAtTarget ? Colors.green : Colors.orange,
                       fontSize: 12,
-                      fontWeight: consecutiveGoals >= 3 ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -397,9 +389,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Widget _buildLastSessionInfo() {
-    // Use case-insensitive lookup
-    final storage = context.read<StorageService>();
-    final history = storage.findExerciseHistory(_currentExercise.name);
+    final history = _exerciseHistory?[_currentExercise.name];
     if (history == null) return const SizedBox.shrink();
 
     return Container(

@@ -128,6 +128,21 @@ class StorageService extends ChangeNotifier {
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
+  // Get saved exercise by ID
+  SavedExercise? getSavedExerciseById(String id) {
+    return _savedExercisesBox.get(id);
+  }
+
+  // Increment exercise usage count
+  Future<void> incrementExerciseUsage(String id) async {
+    final exercise = _savedExercisesBox.get(id);
+    if (exercise != null) {
+      final updated = exercise.copyWith(timesUsed: exercise.timesUsed + 1);
+      await _savedExercisesBox.put(id, updated);
+      notifyListeners();
+    }
+  }
+
   // ============ WORKOUT ROUTINES ============
   Future<void> saveWorkoutRoutine(WorkoutRoutine routine) async {
     await _workoutRoutinesBox.put(routine.id, routine);
@@ -144,7 +159,12 @@ class StorageService extends ChangeNotifier {
       ..sort((a, b) => (b.lastUsed ?? DateTime(1900)).compareTo(a.lastUsed ?? DateTime(1900)));
   }
 
-  // ============ SAVED STRETCHES ============ (NEW)
+  // Get workout routine by ID
+  WorkoutRoutine? getWorkoutRoutineById(String id) {
+    return _workoutRoutinesBox.get(id);
+  }
+
+  // ============ SAVED STRETCHES ============
   Future<void> saveSavedStretch(SavedStretch stretch) async {
     await _savedStretchesBox.put(stretch.id, stretch);
     notifyListeners();
@@ -160,7 +180,7 @@ class StorageService extends ChangeNotifier {
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
-  // ============ STRETCH ROUTINES ============ (NEW)
+  // ============ STRETCH ROUTINES ============
   Future<void> saveStretchRoutine(StretchRoutine routine) async {
     await _stretchRoutinesBox.put(routine.id, routine);
     notifyListeners();
@@ -215,6 +235,29 @@ class StorageService extends ChangeNotifier {
         .fold(0, (sum, w) => sum + w.durationMinutes);
   }
 
+  // Save a complete workout session
+  Future<void> saveWorkoutSession({
+    required String workoutName,
+    required String workoutType,
+    required List<Exercise> exercises,
+    required int durationMinutes,
+    String? routineId,
+    String? notes,
+  }) async {
+    final workout = Workout(
+      id: const Uuid().v4(),
+      name: workoutName,
+      type: workoutType,
+      date: DateTime.now(),
+      exercises: exercises,
+      isCompleted: true,
+      durationMinutes: durationMinutes,
+      routineId: routineId,
+      notes: notes,
+    );
+    await saveWorkout(workout);
+  }
+
   // ============ WORKOUT HISTORY ============
   Future<void> saveWorkoutHistory(WorkoutHistory history) async {
     await _workoutHistoryBox.put(history.id, history);
@@ -235,163 +278,137 @@ class StorageService extends ChangeNotifier {
     return getAllWorkoutHistory().take(count).toList();
   }
 
-  /// Get exercise history by analyzing all completed workouts
-  /// Returns a map of exercise name -> ExerciseHistory with stats
-  /// Checks BOTH Workout box AND WorkoutHistory box for comprehensive data
   Map<String, ExerciseHistory> getExerciseHistory() {
     final Map<String, ExerciseHistory> historyMap = {};
-    final Map<String, List<_ExerciseSessionData>> sessionsByExercise = {};
     
-    // ===== PART 1: Check WorkoutHistory box (older storage format) =====
-    final workoutHistories = getAllWorkoutHistory();
-    for (final history in workoutHistories) {
-      for (final exercise in history.exercises) {
-        if (exercise.weights.isEmpty || exercise.reps.isEmpty) continue;
-        
-        final name = exercise.exerciseName;
-        sessionsByExercise.putIfAbsent(name, () => []);
-        
-        final nonZeroWeights = exercise.weights.where((w) => w > 0).toList();
-        if (nonZeroWeights.isEmpty) continue;
-        
-        final avgWeight = nonZeroWeights.reduce((a, b) => a + b) / nonZeroWeights.length;
-        final avgReps = exercise.reps.isNotEmpty 
-            ? exercise.reps.reduce((a, b) => a + b) / exercise.reps.length 
-            : 0.0;
-        
-        // Default to 8 if we can't determine target
-        final minTargetReps = 8;
-        final metGoal = avgReps >= minTargetReps && exercise.completedAllSets;
-        
-        sessionsByExercise[name]!.add(_ExerciseSessionData(
-          date: history.date,
-          weights: exercise.weights,
-          reps: exercise.reps,
-          avgWeight: avgWeight,
-          avgReps: avgReps,
-          metGoal: metGoal,
-          minTargetReps: minTargetReps,
-        ));
-      }
-    }
-    
-    // ===== PART 2: Check Workout box (newer storage format) =====
+    // Get all workouts sorted by date (newest first)
     final workouts = getAllWorkouts();
-    for (final workout in workouts) {
+    
+    // Build history for each exercise by going through workouts from oldest to newest
+    // so we can track progression correctly
+    final sortedWorkouts = workouts.reversed.toList(); // oldest first
+    
+    for (final workout in sortedWorkouts) {
       for (final exercise in workout.exercises) {
         if (exercise.completedSets.isEmpty) continue;
         
-        final name = exercise.name;
-        sessionsByExercise.putIfAbsent(name, () => []);
-        
-        // Calculate stats for this session
+        final exerciseName = exercise.name;
         final weights = exercise.completedSets.map((s) => s.weight).toList();
         final reps = exercise.completedSets.map((s) => s.reps).toList();
-        final nonZeroWeights = weights.where((w) => w > 0).toList();
         
-        if (nonZeroWeights.isEmpty) continue;
+        // Calculate if all sets were completed and if rep goal was met
+        final completedAllSets = exercise.completedSets.length >= exercise.targetSets;
+        final maxTargetReps = exercise.maxReps;
+        final metRepGoal = completedAllSets && reps.every((r) => r >= maxTargetReps);
         
-        final avgWeight = nonZeroWeights.reduce((a, b) => a + b) / nonZeroWeights.length;
-        final avgReps = reps.isNotEmpty ? reps.reduce((a, b) => a + b) / reps.length : 0.0;
-        final minTargetReps = exercise.minReps;
-        
-        // Session met goal if average reps >= minimum target reps
-        final metGoal = avgReps >= minTargetReps;
-        
-        sessionsByExercise[name]!.add(_ExerciseSessionData(
-          date: workout.date,
-          weights: weights.map((w) => w).toList(),
-          reps: reps,
-          avgWeight: avgWeight,
-          avgReps: avgReps,
-          metGoal: metGoal,
-          minTargetReps: minTargetReps,
-        ));
-      }
-    }
-    
-    // ===== PART 3: Build ExerciseHistory for each exercise =====
-    for (final entry in sessionsByExercise.entries) {
-      final name = entry.key;
-      final sessions = entry.value;
-      
-      if (sessions.isEmpty) continue;
-      
-      // Sort sessions by date (newest first)
-      sessions.sort((a, b) => b.date.compareTo(a.date));
-      
-      final latestSession = sessions.first;
-      
-      // Count consecutive goals met (from most recent going backwards)
-      int consecutiveGoalsMet = 0;
-      for (final session in sessions) {
-        if (session.metGoal) {
-          consecutiveGoalsMet++;
+        if (historyMap.containsKey(exerciseName)) {
+          // Update existing history
+          final existing = historyMap[exerciseName]!;
+          final newConsecutiveGoalsMet = metRepGoal 
+              ? existing.consecutiveGoalsMet + 1 
+              : 0; // Reset if goal not met
+          
+          historyMap[exerciseName] = ExerciseHistory(
+            exerciseName: exerciseName,
+            reps: reps,
+            weights: weights,
+            completedAllSets: completedAllSets,
+            metRepGoal: metRepGoal,
+            sessionCount: existing.sessionCount + 1,
+            lastWeight: weights.isNotEmpty ? weights.reduce((a, b) => a > b ? a : b) : 0,
+            lastReps: reps.isNotEmpty ? reps.reduce((a, b) => a > b ? a : b) : 0,
+            consecutiveGoalsMet: newConsecutiveGoalsMet,
+          );
         } else {
-          break; // Stop counting at first failure
+          // Create new history entry
+          historyMap[exerciseName] = ExerciseHistory(
+            exerciseName: exerciseName,
+            reps: reps,
+            weights: weights,
+            completedAllSets: completedAllSets,
+            metRepGoal: metRepGoal,
+            sessionCount: 1,
+            lastWeight: weights.isNotEmpty ? weights.reduce((a, b) => a > b ? a : b) : 0,
+            lastReps: reps.isNotEmpty ? reps.reduce((a, b) => a > b ? a : b) : 0,
+            consecutiveGoalsMet: metRepGoal ? 1 : 0,
+          );
         }
       }
-      
-      // Get the weight to use (max weight from latest session)
-      final latestWeights = latestSession.weights.where((w) => w > 0).toList();
-      final lastWeight = latestWeights.isNotEmpty 
-          ? latestWeights.reduce((a, b) => a > b ? a : b) 
-          : 0.0;
-      
-      historyMap[name] = ExerciseHistory(
-        exerciseName: name,
-        reps: latestSession.reps,
-        weights: latestSession.weights,
-        completedAllSets: true,
-        metRepGoal: latestSession.metGoal,
-        sessionCount: sessions.length,
-        lastWeight: lastWeight,
-        lastReps: latestSession.avgReps.round(),
-        consecutiveGoalsMet: consecutiveGoalsMet,
-      );
     }
     
     return historyMap;
   }
-  
-  /// Find exercise history with case-insensitive name matching
-  /// Use this if exact name matching fails
-  ExerciseHistory? findExerciseHistory(String exerciseName) {
-    final allHistory = getExerciseHistory();
+
+  // Calculate workout streak from List<Workout>
+  int calculateStreak(List<Workout> workouts) {
+    if (workouts.isEmpty) return 0;
     
-    // Try exact match first
-    if (allHistory.containsKey(exerciseName)) {
-      return allHistory[exerciseName];
+    int streak = 0;
+    DateTime checkDate = DateTime.now();
+    checkDate = DateTime(checkDate.year, checkDate.month, checkDate.day);
+    
+    // Get unique workout dates
+    Set<String> workoutDates = {};
+    for (var workout in workouts) {
+      workoutDates.add(DateFormat('yyyy-MM-dd').format(workout.date));
     }
     
-    // Try case-insensitive match
-    final lowerName = exerciseName.toLowerCase();
-    for (final entry in allHistory.entries) {
-      if (entry.key.toLowerCase() == lowerName) {
-        return entry.value;
-      }
+    // Check if worked out today or yesterday to start the streak
+    String todayKey = DateFormat('yyyy-MM-dd').format(checkDate);
+    String yesterdayKey = DateFormat('yyyy-MM-dd').format(checkDate.subtract(const Duration(days: 1)));
+    
+    if (!workoutDates.contains(todayKey) && !workoutDates.contains(yesterdayKey)) {
+      return 0;
     }
     
-    // Try partial match (for variations like "Bench Press" vs "Barbell Bench Press")
-    for (final entry in allHistory.entries) {
-      if (entry.key.toLowerCase().contains(lowerName) || 
-          lowerName.contains(entry.key.toLowerCase())) {
-        return entry.value;
-      }
+    // If didn't work out today, start from yesterday
+    if (!workoutDates.contains(todayKey)) {
+      checkDate = checkDate.subtract(const Duration(days: 1));
     }
     
-    return null;
+    // Count consecutive days
+    while (workoutDates.contains(DateFormat('yyyy-MM-dd').format(checkDate))) {
+      streak++;
+      checkDate = checkDate.subtract(const Duration(days: 1));
+    }
+    
+    return streak;
   }
-  
-  /// Debug method: Get all exercise names in history
-  List<String> getExerciseHistoryNames() {
-    return getExerciseHistory().keys.toList();
-  }
-  
-  /// Get weight entries sorted by date (newest first)
-  List<WeightEntry> getWeightEntries() {
-    return _weightEntriesBox.values.toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
+
+  // Calculate workout streak from List<WorkoutHistory>
+  int calculateStreakFromHistory(List<WorkoutHistory> history) {
+    if (history.isEmpty) return 0;
+    
+    int streak = 0;
+    DateTime checkDate = DateTime.now();
+    checkDate = DateTime(checkDate.year, checkDate.month, checkDate.day);
+    
+    // Get unique workout dates
+    Set<String> workoutDates = {};
+    for (var workout in history) {
+      workoutDates.add(DateFormat('yyyy-MM-dd').format(workout.date));
+    }
+    
+    // Check if worked out today or yesterday to start the streak
+    String todayKey = DateFormat('yyyy-MM-dd').format(checkDate);
+    String yesterdayKey = DateFormat('yyyy-MM-dd').format(checkDate.subtract(const Duration(days: 1)));
+    
+    if (!workoutDates.contains(todayKey) && !workoutDates.contains(yesterdayKey)) {
+      return 0;
+    }
+    
+    // If didn't work out today, start from yesterday
+    if (!workoutDates.contains(todayKey)) {
+      checkDate = checkDate.subtract(const Duration(days: 1));
+    }
+    
+    // Count consecutive days
+    while (workoutDates.contains(DateFormat('yyyy-MM-dd').format(checkDate))) {
+      streak++;
+      checkDate = checkDate.subtract(const Duration(days: 1));
+    }
+    
+    return streak;
   }
 
   // ============ WEIGHT ENTRIES ============
@@ -408,6 +425,11 @@ class StorageService extends ChangeNotifier {
   List<WeightEntry> getAllWeightEntries() {
     return _weightEntriesBox.values.toList()
       ..sort((a, b) => b.date.compareTo(a.date));
+  }
+
+  // Alias for getAllWeightEntries
+  List<WeightEntry> getWeightEntries() {
+    return getAllWeightEntries();
   }
 
   WeightEntry? getLatestWeightEntry() {
@@ -451,7 +473,28 @@ class StorageService extends ChangeNotifier {
 
   int getTotalCaloriesForDate(DateTime date) {
     return getFoodEntriesForDate(date)
-        .fold(0.0, (sum, e) => sum + e.calories).toInt();
+        .fold(0, (sum, e) => sum + e.calories.toInt());
+  }
+
+  // Get daily nutrition summary
+  DailyNutrition getDailyNutrition(DateTime date) {
+    final entries = getFoodEntriesForDate(date);
+    return DailyNutrition.fromEntries(date, entries);
+  }
+
+  // Get frequently used foods (last 6 unique foods)
+  List<FoodEntry> getFrequentFoods() {
+    final allEntries = getAllFoodEntries();
+    final Map<String, FoodEntry> uniqueFoods = {};
+    
+    for (var entry in allEntries) {
+      if (!uniqueFoods.containsKey(entry.name.toLowerCase())) {
+        uniqueFoods[entry.name.toLowerCase()] = entry;
+      }
+      if (uniqueFoods.length >= 6) break;
+    }
+    
+    return uniqueFoods.values.toList();
   }
 
   // ============ FOOD LIBRARY ============
@@ -467,7 +510,87 @@ class StorageService extends ChangeNotifier {
 
   List<FoodLibraryItem> getAllFoodLibraryItems() {
     return _foodLibraryBox.values.toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      ..sort((a, b) => b.lastUsed.compareTo(a.lastUsed));
+  }
+
+  // Alias for getAllFoodLibraryItems
+  List<FoodLibraryItem> getFoodLibrary() {
+    return getAllFoodLibraryItems();
+  }
+
+  // Add item to food library (or update existing)
+  Future<void> addToFoodLibrary({
+    required String name,
+    required double calories,
+    double protein = 0,
+    double carbs = 0,
+    double fats = 0,
+    double servingSize = 1,
+    String servingUnit = 'serving',
+  }) async {
+    // Check if item already exists by name
+    final existing = _foodLibraryBox.values.cast<FoodLibraryItem?>().firstWhere(
+      (item) => item?.name.toLowerCase() == name.toLowerCase(),
+      orElse: () => null,
+    );
+
+    if (existing != null) {
+      // Update existing item
+      final updated = existing.copyWith(
+        calories: calories,
+        protein: protein,
+        carbs: carbs,
+        fats: fats,
+        servingSize: servingSize,
+        servingUnit: servingUnit,
+      );
+      updated.lastUsed = DateTime.now();
+      updated.useCount++;
+      await _foodLibraryBox.put(existing.id, updated);
+    } else {
+      // Create new item
+      final item = FoodLibraryItem(
+        id: const Uuid().v4(),
+        name: name,
+        calories: calories,
+        protein: protein,
+        carbs: carbs,
+        fats: fats,
+        servingSize: servingSize,
+        servingUnit: servingUnit,
+      );
+      await _foodLibraryBox.put(item.id, item);
+    }
+    notifyListeners();
+  }
+
+  // Mark food library item as used (update lastUsed and useCount)
+  Future<void> markFoodLibraryItemUsed(String name) async {
+    final item = _foodLibraryBox.values.cast<FoodLibraryItem?>().firstWhere(
+      (i) => i?.name.toLowerCase() == name.toLowerCase(),
+      orElse: () => null,
+    );
+    
+    if (item != null) {
+      item.lastUsed = DateTime.now();
+      item.useCount++;
+      await _foodLibraryBox.put(item.id, item);
+      notifyListeners();
+    }
+  }
+
+  // Reset food use count
+  Future<void> resetFoodUseCount(String name) async {
+    final item = _foodLibraryBox.values.cast<FoodLibraryItem?>().firstWhere(
+      (i) => i?.name.toLowerCase() == name.toLowerCase(),
+      orElse: () => null,
+    );
+    
+    if (item != null) {
+      item.useCount = 0;
+      await _foodLibraryBox.put(item.id, item);
+      notifyListeners();
+    }
   }
 
   // ============ WATER ENTRIES ============
@@ -493,10 +616,75 @@ class StorageService extends ChangeNotifier {
         .fold(0, (sum, e) => sum + e.amountOz);
   }
 
+  // Get daily water intake summary
+  DailyWaterIntake getDailyWaterIntake(DateTime date) {
+    final entries = getWaterEntriesForDate(date);
+    final totalOz = entries.fold(0, (sum, e) => sum + e.amountOz);
+    final goalOz = _settings.dailyWaterGoalOz;
+    
+    return DailyWaterIntake(
+      date: date,
+      totalOz: totalOz,
+      goalOz: goalOz,
+      entries: entries,
+    );
+  }
+
+  // Quick add water entry
+  Future<void> quickAddWater(int oz) async {
+    final entry = WaterEntry(
+      id: const Uuid().v4(),
+      date: DateTime.now(),
+      amountOz: oz,
+    );
+    await saveWaterEntry(entry);
+  }
+
+  // Clear water entries for a specific date
+  Future<void> clearWaterEntriesForDate(DateTime date) async {
+    String dateKey = DateFormat('yyyy-MM-dd').format(date);
+    final entriesToDelete = _waterEntriesBox.values
+        .where((e) => DateFormat('yyyy-MM-dd').format(e.date) == dateKey)
+        .toList();
+    
+    for (var entry in entriesToDelete) {
+      await _waterEntriesBox.delete(entry.id);
+    }
+    notifyListeners();
+  }
+
   // ============ CHECKLIST ============
   List<ChecklistItem> getChecklistItems() {
     return _checklistItemsBox.values.toList()
       ..sort((a, b) => a.order.compareTo(b.order));
+  }
+
+  // Save checklist item
+  Future<void> saveChecklistItem(ChecklistItem item) async {
+    await _checklistItemsBox.put(item.id, item);
+    notifyListeners();
+  }
+
+  // Delete checklist item
+  Future<void> deleteChecklistItem(String id) async {
+    await _checklistItemsBox.delete(id);
+    // Also delete any completion status for this item
+    for (var key in _dailyChecklistStatusBox.keys) {
+      Map<dynamic, dynamic>? dayStatus = _dailyChecklistStatusBox.get(key);
+      if (dayStatus != null && dayStatus.containsKey(id)) {
+        dayStatus.remove(id);
+        await _dailyChecklistStatusBox.put(key, dayStatus);
+      }
+    }
+    notifyListeners();
+  }
+
+  // Check if a specific checklist item is completed for a date
+  bool isChecklistItemCompleted(String itemId, DateTime date) {
+    String dateKey = _getDateKey(date);
+    Map<dynamic, dynamic>? dayStatus = _dailyChecklistStatusBox.get(dateKey);
+    if (dayStatus == null) return false;
+    return dayStatus[itemId] == true;
   }
 
   Future<void> toggleChecklistItem(String itemId, DateTime date) async {
@@ -579,7 +767,7 @@ class StorageService extends ChangeNotifier {
     await _foodLibraryBox.clear();
     await _appDataBox.clear();
 
-    // NEW: Clear stretch data
+    // Clear stretch data
     await _savedStretchesBox.clear();
     await _stretchRoutinesBox.clear();
 
@@ -637,276 +825,20 @@ class StorageService extends ChangeNotifier {
     return _cardioWorkoutsBox.get(id);
   }
 
-  // Helper method (assuming it's defined somewhere; included for completeness)
+  // ============ STRETCH ROUTINE ORDER ============
+  Future<void> saveStretchRoutineOrder(List<String> order) async {
+    await _appDataBox.put('stretch_routine_order', order);
+    notifyListeners();
+  }
+
+  List<String> getStretchRoutineOrder() {
+    final order = _appDataBox.get('stretch_routine_order');
+    if (order == null) return [];
+    return List<String>.from(order);
+  }
+
+  // Helper method
   String _getDateKey(DateTime date) {
     return DateFormat('yyyy-MM-dd').format(date);
   }
-
-  // ============ MISSING WATER METHODS ============
-  
-  /// Get daily water intake with all stats
-  DailyWaterIntake getDailyWaterIntake(DateTime date) {
-    final entries = getWaterEntriesForDate(date);
-    final totalOz = entries.fold(0, (sum, e) => sum + e.amountOz);
-    return DailyWaterIntake(
-      date: date,
-      totalOz: totalOz,
-      goalOz: _settings.dailyWaterGoalOz,
-      entries: entries,
-    );
-  }
-
-  /// Quick add water entry
-  Future<void> quickAddWater(int oz) async {
-    final entry = WaterEntry(
-      id: const Uuid().v4(),
-      date: DateTime.now(),
-      amountOz: oz,
-    );
-    await saveWaterEntry(entry);
-  }
-
-  /// Clear water entries for a specific date
-  Future<void> clearWaterEntriesForDate(DateTime date) async {
-    String dateKey = DateFormat('yyyy-MM-dd').format(date);
-    final entriesToDelete = _waterEntriesBox.values
-        .where((e) => DateFormat('yyyy-MM-dd').format(e.date) == dateKey)
-        .toList();
-    
-    for (var entry in entriesToDelete) {
-      await _waterEntriesBox.delete(entry.id);
-    }
-    notifyListeners();
-  }
-
-  // ============ MISSING CHECKLIST METHODS ============
-
-  /// Save checklist item
-  Future<void> saveChecklistItem(ChecklistItem item) async {
-    await _checklistItemsBox.put(item.id, item);
-    notifyListeners();
-  }
-
-  /// Delete checklist item
-  Future<void> deleteChecklistItem(String id) async {
-    await _checklistItemsBox.delete(id);
-    // Also delete any completion status for this item
-    for (var key in _dailyChecklistStatusBox.keys) {
-      Map<dynamic, dynamic>? dayStatus = _dailyChecklistStatusBox.get(key);
-      if (dayStatus != null && dayStatus.containsKey(id)) {
-        dayStatus.remove(id);
-        await _dailyChecklistStatusBox.put(key, dayStatus);
-      }
-    }
-    notifyListeners();
-  }
-
-  /// Check if a specific checklist item is completed for a date
-  bool isChecklistItemCompleted(String itemId, DateTime date) {
-    String dateKey = _getDateKey(date);
-    Map<dynamic, dynamic>? dayStatus = _dailyChecklistStatusBox.get(dateKey);
-    if (dayStatus == null) return false;
-    return dayStatus[itemId] == true;
-  }
-
-  // ============ MISSING FOOD/NUTRITION METHODS ============
-
-  /// Get daily nutrition totals
-  DailyNutrition getDailyNutrition(DateTime date) {
-    final entries = getFoodEntriesForDate(date);
-    return DailyNutrition.fromEntries(date, entries);
-  }
-
-  /// Get frequent foods sorted by usage
-  List<FoodEntry> getFrequentFoods() {
-    final entries = getAllFoodEntries();
-    // Sort by useCount descending, take top 10
-    entries.sort((a, b) => b.useCount.compareTo(a.useCount));
-    return entries.take(10).toList();
-  }
-
-  /// Add to food library (or update if exists)
-  Future<void> addToFoodLibrary({
-    required String name,
-    required double calories,
-    double protein = 0,
-    double carbs = 0,
-    double fats = 0,
-    double servingSize = 1,
-    String servingUnit = 'serving',
-  }) async {
-    // Check if item already exists
-    FoodLibraryItem? existing;
-    try {
-      existing = _foodLibraryBox.values.firstWhere(
-        (item) => item.name.toLowerCase() == name.toLowerCase(),
-      );
-    } catch (_) {
-      existing = null;
-    }
-
-    if (existing != null) {
-      // Update existing item
-      existing.lastUsed = DateTime.now();
-      existing.useCount++;
-      await existing.save();
-    } else {
-      // Create new item
-      final item = FoodLibraryItem(
-        id: const Uuid().v4(),
-        name: name,
-        calories: calories,
-        protein: protein,
-        carbs: carbs,
-        fats: fats,
-        servingSize: servingSize,
-        servingUnit: servingUnit,
-      );
-      await _foodLibraryBox.put(item.id, item);
-    }
-    notifyListeners();
-  }
-
-  /// Get food library sorted by recent use
-  List<FoodLibraryItem> getFoodLibrary() {
-    return _foodLibraryBox.values.toList()
-      ..sort((a, b) {
-        // Sort by useCount first, then by lastUsed
-        if (b.useCount != a.useCount) {
-          return b.useCount.compareTo(a.useCount);
-        }
-        return b.lastUsed.compareTo(a.lastUsed);
-      });
-  }
-
-  /// Mark a food library item as used
-  Future<void> markFoodLibraryItemUsed(String name) async {
-    try {
-      final item = _foodLibraryBox.values.firstWhere(
-        (item) => item.name.toLowerCase() == name.toLowerCase(),
-      );
-      item.lastUsed = DateTime.now();
-      item.useCount++;
-      await item.save();
-      notifyListeners();
-    } catch (_) {
-      // Item not found, ignore
-    }
-  }
-
-  /// Reset food use count (for removing from quick-add)
-  Future<void> resetFoodUseCount(String name) async {
-    try {
-      final item = _foodLibraryBox.values.firstWhere(
-        (item) => item.name.toLowerCase() == name.toLowerCase(),
-      );
-      item.useCount = 0;
-      await item.save();
-      notifyListeners();
-    } catch (_) {
-      // Item not found, ignore
-    }
-  }
-
-  // ============ MISSING EXERCISE/WORKOUT METHODS ============
-
-  /// Get saved exercise by ID
-  SavedExercise? getSavedExerciseById(String id) {
-    return _savedExercisesBox.get(id);
-  }
-
-  /// Increment exercise usage count
-  Future<void> incrementExerciseUsage(String id) async {
-    final exercise = _savedExercisesBox.get(id);
-    if (exercise != null) {
-      final updated = exercise.copyWith(timesUsed: exercise.timesUsed + 1);
-      await _savedExercisesBox.put(id, updated);
-      notifyListeners();
-    }
-  }
-
-  /// Get workout routine by ID
-  WorkoutRoutine? getWorkoutRoutineById(String id) {
-    return _workoutRoutinesBox.get(id);
-  }
-
-  /// Save a complete workout session
-  Future<void> saveWorkoutSession({
-    required String workoutName,
-    required String workoutType,
-    required List<Exercise> exercises,
-    required int durationMinutes,
-    String? routineId,
-    String? notes,
-  }) async {
-    final workout = Workout(
-      id: const Uuid().v4(),
-      name: workoutName,
-      type: workoutType,
-      date: DateTime.now(),
-      exercises: exercises,
-      isCompleted: true,
-      durationMinutes: durationMinutes,
-      routineId: routineId,
-      notes: notes,
-    );
-    await saveWorkout(workout);
-  }
-
-  /// Calculate workout streak from List<Workout>
-  int calculateStreak(List<Workout> workouts) {
-    if (workouts.isEmpty) return 0;
-    
-    int streak = 0;
-    DateTime checkDate = DateTime.now();
-    checkDate = DateTime(checkDate.year, checkDate.month, checkDate.day);
-    
-    // Get unique workout dates
-    Set<String> workoutDates = {};
-    for (var workout in workouts) {
-      workoutDates.add(DateFormat('yyyy-MM-dd').format(workout.date));
-    }
-    
-    // Check if worked out today or yesterday to start the streak
-    String todayKey = DateFormat('yyyy-MM-dd').format(checkDate);
-    String yesterdayKey = DateFormat('yyyy-MM-dd').format(checkDate.subtract(const Duration(days: 1)));
-    
-    if (!workoutDates.contains(todayKey) && !workoutDates.contains(yesterdayKey)) {
-      return 0;
-    }
-    
-    // If didn't work out today, start from yesterday
-    if (!workoutDates.contains(todayKey)) {
-      checkDate = checkDate.subtract(const Duration(days: 1));
-    }
-    
-    // Count consecutive days
-    while (workoutDates.contains(DateFormat('yyyy-MM-dd').format(checkDate))) {
-      streak++;
-      checkDate = checkDate.subtract(const Duration(days: 1));
-    }
-    
-    return streak;
-  }
-}
-
-/// Helper class for tracking exercise session data during history calculation
-class _ExerciseSessionData {
-  final DateTime date;
-  final List<double> weights;
-  final List<int> reps;
-  final double avgWeight;
-  final double avgReps;
-  final bool metGoal;
-  final int minTargetReps;
-  
-  _ExerciseSessionData({
-    required this.date,
-    required this.weights,
-    required this.reps,
-    required this.avgWeight,
-    required this.avgReps,
-    required this.metGoal,
-    required this.minTargetReps,
-  });
 }

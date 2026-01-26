@@ -59,6 +59,10 @@ class WorkoutTab extends StatefulWidget {
 class _WorkoutTabState extends State<WorkoutTab> {
   List<SavedStretch> _stretches = [];
   List<StretchRoutine> _stretchRoutines = [];
+  
+  // Stretch routine organization
+  bool _stretchSectionCollapsed = false;
+  List<String> _stretchRoutineOrder = []; // Stored order of routine IDs
 
   List<Workout> _workouts = [];
   List<WorkoutRoutine> _routines = [];
@@ -144,6 +148,14 @@ class _WorkoutTabState extends State<WorkoutTab> {
         debugPrint('Error loading stretch routines: $e');
       }
 
+      // Load stretch routine order from storage
+      List<String> routineOrder = [];
+      try {
+        routineOrder = storage.getStretchRoutineOrder();
+      } catch (e) {
+        debugPrint('Error loading stretch routine order: $e');
+      }
+
       try {
         history = await storage.getExerciseHistory();
       } catch (e) {
@@ -156,6 +168,19 @@ class _WorkoutTabState extends State<WorkoutTab> {
         debugPrint('Error loading cardio workouts: $e');
       }
 
+      // Sort stretch routines by saved order
+      if (routineOrder.isNotEmpty) {
+        stretchRoutines.sort((a, b) {
+          final aIndex = routineOrder.indexOf(a.id);
+          final bIndex = routineOrder.indexOf(b.id);
+          // Items not in order go to the end
+          if (aIndex == -1 && bIndex == -1) return 0;
+          if (aIndex == -1) return 1;
+          if (bIndex == -1) return -1;
+          return aIndex.compareTo(bIndex);
+        });
+      }
+
       if (mounted) {
         setState(() {
           _workouts = workouts;
@@ -164,6 +189,9 @@ class _WorkoutTabState extends State<WorkoutTab> {
           _exercises = exercises;
           _stretches = stretches;
           _stretchRoutines = stretchRoutines;
+          _stretchRoutineOrder = routineOrder.isNotEmpty 
+              ? routineOrder 
+              : stretchRoutines.map((r) => r.id).toList();
           _exerciseHistory = history;
           _cardioWorkouts = cardioWorkouts;
           _isLoading = false;
@@ -265,8 +293,8 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     const SizedBox(height: 12),
                     _buildImportExportButtons(),
                     const SizedBox(height: 24),
-                    _buildWarmupStretchesSection(),  // â† ADD THIS
-                    const SizedBox(height: 24),       // â† ADD THIS
+                    _buildWarmupStretchesSection(),  
+                    const SizedBox(height: 24),       
                     _buildMyRoutinesSection(),
                     const SizedBox(height: 24),
                     _buildMyExercisesSection(),
@@ -397,7 +425,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
       ),
       const SizedBox(height: 4),
 
-      // âœ… FIXED TEXT
+      // OK FIXED TEXT
       Text(
         progress >= 1
             ? '\u{1F389} Goal achieved!'
@@ -405,8 +433,8 @@ class _WorkoutTabState extends State<WorkoutTab> {
                 ? '1 more to go!'
                 : '$remaining more to go!',
         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-        maxLines: 2,           // âœ… allow wrap
-        softWrap: true,        // âœ… allow wrap
+        maxLines: 2,           // OK allow wrap
+        softWrap: true,        // OK allow wrap
       ),
 
       const SizedBox(height: 10),
@@ -1092,7 +1120,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 110, // Increased from 100 to give more room
+          height: 120, // Increased to accommodate 2-line titles
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             itemCount: _routines.length,
@@ -1111,9 +1139,9 @@ class _WorkoutTabState extends State<WorkoutTab> {
       onTap: () => _startRoutine(routine),
       onLongPress: () => _showRoutineOptions(routine),
       child: Container(
-        width: 140,
+        width: 180,
         margin: const EdgeInsets.only(right: 12),
-        padding: const EdgeInsets.all(10), // Reduced padding from 12 to 10
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: color.withOpacity(0.15),
           borderRadius: BorderRadius.circular(16),
@@ -1121,18 +1149,18 @@ class _WorkoutTabState extends State<WorkoutTab> {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween, // Use spaceBetween instead of Spacer
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Row(children: [
               Container(
-                padding: const EdgeInsets.all(5), // Reduced from 6
+                padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
                     color: color.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(8)),
-                child: Icon(Icons.fitness_center, color: color, size: 14), // Reduced from 16
+                child: Icon(Icons.fitness_center, color: color, size: 14),
               ),
               const Spacer(),
-              Icon(Icons.play_arrow, color: color, size: 18), // Reduced from 20
+              Icon(Icons.play_arrow, color: color, size: 18),
             ]),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1140,7 +1168,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
               children: [
                 Text(routine.name,
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis),
                 Text('${routine.exercises.length} exercises',
                     style: TextStyle(color: Colors.grey.shade400, fontSize: 10)),
@@ -1164,8 +1192,36 @@ class _WorkoutTabState extends State<WorkoutTab> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis),
             ),
-            Text('${_exercises.length} exercises',
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Library button with search
+                if (_exercises.isNotEmpty)
+                  InkWell(
+                    onTap: _showExerciseLibrary,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.search, size: 16, color: AppTheme.primaryColor),
+                          const SizedBox(width: 4),
+                          Text('Library',
+                              style: TextStyle(fontSize: 12, color: AppTheme.primaryColor)),
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                Text('${_exercises.length}',
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+              ],
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -1284,209 +1340,265 @@ class _WorkoutTabState extends State<WorkoutTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // FIXED: Use Expanded to prevent overflow in header
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.teal.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.self_improvement, color: Colors.teal, size: 20),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Warmup Stretches',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              // Buttons in a constrained row
-              IconButton(
-                icon: const Icon(Icons.add_circle_outline, size: 22),
-                tooltip: 'Add Stretch',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                onPressed: () => _showCreateStretchDialog(),
-              ),
-              IconButton(
-                icon: const Icon(Icons.playlist_add, size: 22),
-                tooltip: 'Create Routine',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                onPressed: () => _showCreateStretchRoutineDialog(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (_stretchRoutines.isEmpty && _stretches.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Column(
-                  children: [
-                    Icon(Icons.self_improvement, size: 48, color: Colors.grey.shade600),
-                    const SizedBox(height: 12),
-                    Text(
-                      'No warmup routines yet',
-                      style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Create stretches and group them into routines',
-                      style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      onPressed: () => _showCreateStretchDialog(),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Add First Stretch'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else ...[
-            // Show stretch routines
-            if (_stretchRoutines.isNotEmpty) ...[
-              ..._stretchRoutines.map((routine) {
-                final color = Color(int.parse('FF${routine.colorHex ?? '26A69A'}', radix: 16));
-                final totalDuration = routine.stretches.fold<int>(0, (sum, rs) {
-                  final stretch = _getStretchById(rs.savedStretchId);
-                  return sum + (rs.overrideDuration ?? stretch?.defaultDuration ?? 30);
-                });
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    leading: CircleAvatar(
-                      backgroundColor: color.withOpacity(0.2),
-                      radius: 20,
-                      child: Icon(Icons.self_improvement, color: color, size: 20),
-                    ),
-                    title: Text(
-                      routine.name,
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                    subtitle: Text(
-                      '${routine.stretches.length} stretches \u{2022} ${(totalDuration / 60).ceil()} min',
-                      style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    // FIXED: Simplified trailing to prevent overflow
-                    trailing: SizedBox(
-                      width: 80,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          if (routine.timesCompleted > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.teal.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                '${routine.timesCompleted}x',
-                                style: const TextStyle(color: Colors.teal, fontSize: 11),
-                              ),
-                            ),
-                          const SizedBox(width: 4),
-                          SizedBox(
-                            width: 32,
-                            height: 32,
-                            child: IconButton(
-                              icon: const Icon(Icons.more_vert, size: 18),
-                              padding: EdgeInsets.zero,
-                              onPressed: () => _showStretchRoutineOptions(routine),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => StretchSessionScreen(routine: routine),
-                        ),
-                      ).then((_) => _loadData());
-                    },
+          // Header - tappable to collapse/expand
+          InkWell(
+            onTap: _stretchRoutines.isNotEmpty || _stretches.isNotEmpty
+                ? () => setState(() => _stretchSectionCollapsed = !_stretchSectionCollapsed)
+                : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                );
-              }),
-            ],
-
-            // Show individual stretches
-            if (_stretches.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              ExpansionTile(
-                title: Text(
-                  'My Stretches (${_stretches.length})',
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                  child: const Icon(Icons.self_improvement, color: Colors.teal, size: 20),
                 ),
-                initiallyExpanded: _stretchRoutines.isEmpty,
-                children: _stretches.map((stretch) => Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    leading: stretch.photoPath != null
-                        ? ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.file(
-                        File(stretch.photoPath!),
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          width: 40,
-                          height: 40,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Warmup Stretches',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (_stretchRoutines.isNotEmpty)
+                        Text(
+                          '${_stretchRoutines.length} routine${_stretchRoutines.length == 1 ? '' : 's'}',
+                          style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                        ),
+                    ],
+                  ),
+                ),
+                // Collapse/expand indicator
+                if (_stretchRoutines.isNotEmpty || _stretches.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      _stretchSectionCollapsed ? Icons.expand_more : Icons.expand_less,
+                      color: Colors.grey.shade500,
+                      size: 24,
+                    ),
+                  ),
+                // Action buttons
+                SizedBox(
+                  width: 64,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: IconButton(
+                          icon: const Icon(Icons.add_circle_outline, size: 20),
+                          tooltip: 'Add Stretch',
+                          padding: EdgeInsets.zero,
+                          onPressed: () => _showCreateStretchDialog(),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: IconButton(
+                          icon: const Icon(Icons.playlist_add, size: 20),
+                          tooltip: 'Create Routine',
+                          padding: EdgeInsets.zero,
+                          onPressed: () => _showCreateStretchRoutineDialog(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Collapsible content
+          if (!_stretchSectionCollapsed) ...[
+            const SizedBox(height: 16),
+            if (_stretchRoutines.isEmpty && _stretches.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Column(
+                    children: [
+                      Icon(Icons.self_improvement, size: 48, color: Colors.grey.shade600),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No warmup routines yet',
+                        style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Create stretches and group them into routines',
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: () => _showCreateStretchDialog(),
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Add First Stretch'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else ...[
+              // Reorderable stretch routines
+              if (_stretchRoutines.isNotEmpty) ...[
+                // Hint for drag reorder
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.drag_indicator, size: 14, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Hold and drag to reorder',
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                ReorderableListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _stretchRoutines.length,
+                  onReorder: _onStretchRoutineReorder,
+                  proxyDecorator: (child, index, animation) {
+                    return AnimatedBuilder(
+                      animation: animation,
+                      builder: (context, child) {
+                        return Material(
+                          elevation: 4,
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                          child: child,
+                        );
+                      },
+                      child: child,
+                    );
+                  },
+                  itemBuilder: (context, index) {
+                    final routine = _stretchRoutines[index];
+                    return _buildDraggableRoutineCard(routine, index);
+                  },
+                ),
+              ],
+
+              // Show individual stretches
+              if (_stretches.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ExpansionTile(
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'My Stretches (${_stretches.length})',
+                          style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                        ),
+                      ),
+                      // Library button with search
+                      GestureDetector(
+                        onTap: () => _showStretchLibrary(),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.teal.withOpacity(0.2),
+                            color: Colors.teal.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Icon(Icons.accessibility_new, color: Colors.teal, size: 20),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.search, size: 14, color: Colors.teal),
+                              const SizedBox(width: 4),
+                              Text('Library',
+                                  style: TextStyle(fontSize: 11, color: Colors.teal)),
+                            ],
+                          ),
                         ),
                       ),
-                    )
-                        : Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.teal.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.accessibility_new, color: Colors.teal, size: 20),
-                    ),
-                    title: Text(
-                      stretch.name,
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                    subtitle: Text(
-                      '${stretch.defaultDuration}s \u{2022} ${stretch.muscleGroup ?? "General"}',
-                      style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: IconButton(
-                        icon: const Icon(Icons.more_vert, size: 18),
-                        padding: EdgeInsets.zero,
-                        onPressed: () => _showStretchOptions(stretch),
-                      ),
-                    ),
-                    onTap: () => _showStretchOptions(stretch),
+                    ],
                   ),
-                )).toList(),
-              ),
+                  initiallyExpanded: _stretchRoutines.isEmpty,
+                  children: _stretches.map((stretch) => Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                    child: InkWell(
+                      onTap: () => _showStretchOptions(stretch),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Row(
+                          children: [
+                            stretch.photoPath != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.file(
+                                      File(stretch.photoPath!),
+                                      width: 36,
+                                      height: 36,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Container(
+                                        width: 36,
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          color: Colors.teal.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(Icons.accessibility_new, color: Colors.teal, size: 18),
+                                      ),
+                                    ),
+                                  )
+                                : Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: Colors.teal.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(Icons.accessibility_new, color: Colors.teal, size: 18),
+                                  ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    stretch.name,
+                                    style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 2,
+                                  ),
+                                  Text(
+                                    '${stretch.defaultDuration}s \u{2022} ${stretch.muscleGroup ?? "General"}',
+                                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: IconButton(
+                                icon: const Icon(Icons.more_vert, size: 18),
+                                padding: EdgeInsets.zero,
+                                onPressed: () => _showStretchOptions(stretch),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )).toList(),
+                ),
+              ],
             ],
           ],
         ],
@@ -2202,6 +2314,99 @@ class _WorkoutTabState extends State<WorkoutTab> {
     );
   }
 
+  void _onStretchRoutineReorder(int oldIndex, int newIndex) {
+    setState(() {
+      if (newIndex > oldIndex) {
+        newIndex -= 1;
+      }
+      final routine = _stretchRoutines.removeAt(oldIndex);
+      _stretchRoutines.insert(newIndex, routine);
+      
+      // Update order list
+      _stretchRoutineOrder = _stretchRoutines.map((r) => r.id).toList();
+    });
+    
+    // Save the new order to storage
+    context.read<StorageService>().saveStretchRoutineOrder(_stretchRoutineOrder);
+  }
+
+  Widget _buildDraggableRoutineCard(StretchRoutine routine, int index) {
+    final color = Color(int.parse('FF${routine.colorHex ?? '26A69A'}', radix: 16));
+    final totalDuration = routine.stretches.fold<int>(0, (sum, rs) {
+      final stretch = _getStretchById(rs.savedStretchId);
+      return sum + (rs.overrideDuration ?? stretch?.defaultDuration ?? 30);
+    });
+
+    return Card(
+      key: ValueKey(routine.id),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => StretchSessionScreen(routine: routine),
+            ),
+          ).then((_) => _loadData());
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          child: Row(
+            children: [
+              // Drag handle
+              ReorderableDragStartListener(
+                index: index,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(
+                    Icons.drag_indicator,
+                    color: Colors.grey.shade600,
+                    size: 20,
+                  ),
+                ),
+              ),
+              CircleAvatar(
+                backgroundColor: color.withOpacity(0.2),
+                radius: 18,
+                child: Icon(Icons.self_improvement, color: color, size: 18),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      routine.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${routine.stretches.length} stretches \u{2022} ${(totalDuration / 60).ceil()} min${routine.timesCompleted > 0 ? ' \u{2022} ${routine.timesCompleted}x' : ''}',
+                      style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: IconButton(
+                  icon: const Icon(Icons.more_vert, size: 18),
+                  padding: EdgeInsets.zero,
+                  onPressed: () => _showStretchRoutineOptions(routine),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showStretchRoutineOptions(StretchRoutine routine) {
     showModalBottomSheet(
       context: context,
@@ -2354,16 +2559,19 @@ class _WorkoutTabState extends State<WorkoutTab> {
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(DateFormat('MMM d').format(workout.date),
-                      style:
-                          TextStyle(color: Colors.grey.shade400, fontSize: 12)),
-                  Text('${workout.exercises.length} ex',
-                      style:
-                          TextStyle(color: AppTheme.primaryColor, fontSize: 11)),
-                ],
+              SizedBox(
+                width: 50,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(DateFormat('MMM d').format(workout.date),
+                        style:
+                            TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                    Text('${workout.exercises.length} ex',
+                        style:
+                            TextStyle(color: AppTheme.primaryColor, fontSize: 11)),
+                  ],
+                ),
               ),
             ],
           ),
@@ -2415,7 +2623,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
                           style: TextStyle(
                               color: AppTheme.warningColor, fontSize: 12)),
                       if (cardio.distanceMiles != null) ...[
-                        Text(' â€¢ ',
+                        Text(' \u{2022} ',
                             style: TextStyle(
                                 color: Colors.grey.shade500, fontSize: 12)),
                         Text(cardio.distanceDisplay ?? '',
@@ -2426,24 +2634,27 @@ class _WorkoutTabState extends State<WorkoutTab> {
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(DateFormat('MMM d').format(cardio.date),
-                      style:
-                          TextStyle(color: Colors.grey.shade400, fontSize: 12)),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppTheme.warningColor.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(4),
+              SizedBox(
+                width: 55,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(DateFormat('MMM d').format(cardio.date),
+                        style:
+                            TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.warningColor.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text('Cardio',
+                          style: TextStyle(
+                              color: AppTheme.warningColor, fontSize: 10)),
                     ),
-                    child: Text('Cardio',
-                        style: TextStyle(
-                            color: AppTheme.warningColor, fontSize: 10)),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -2759,7 +2970,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
                         TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const Spacer(),
                 Text(
-                    '${_workouts.length} workouts â€¢ ${_cardioWorkouts.length} cardio',
+                    '${_workouts.length} workouts \u{2022} ${_cardioWorkouts.length} cardio',
                     style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
               ]),
             ),
@@ -2864,125 +3075,49 @@ class _WorkoutTabState extends State<WorkoutTab> {
     );
   }
 
-  void _showAllExercises() {
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: AppTheme.surfaceColor,
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (context) => DraggableScrollableSheet(
-      initialChildSize: 0.9,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (context, scrollController) => Column(
-        children: [
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade600,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                const Text(
-                  'All Exercises',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const Spacer(),
-                Text(
-                  '${_exercises.length} total',
-                  style: TextStyle(color: Colors.grey.shade500),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              controller: scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _exercises.length,
-              itemBuilder: (context, index) {
-                final exercise = _exercises[index];
-                final history = _exerciseHistory?[exercise.name];
-                final shouldIncrease =
-                    history != null && history.consecutiveGoalsMet >= 3;
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showExerciseDetails(exercise);
-                    },
-                    onLongPress: () {
-                      Navigator.pop(context);
-                      _showExerciseOptions(exercise);
-                    },
-                    leading: exercise.photoPath != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.file(
-                              File(exercise.photoPath!),
-                              width: 48,
-                              height: 48,
-                              fit: BoxFit.cover,
-                            ),
-                          )
-                        : Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: AppTheme.cardColor,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.fitness_center),
-                          ),
-                    title: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            exercise.name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (shouldIncrease) ...[
-                          const SizedBox(width: 8),
-                          Icon(
-                            Icons.trending_up,
-                            color: AppTheme.successColor,
-                            size: 16,
-                          ),
-                        ],
-                      ],
-                    ),
-                    subtitle: Text(
-                      '${exercise.muscleGroup ?? "General"} '
-                      '${exercise.defaultSets} sets '
-                      '${exercise.repsDisplay}',
-                      style: TextStyle(color: Colors.grey.shade500),
-                    ),
-                    trailing: Icon(
-                      Icons.chevron_right,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
+  void _showExerciseLibrary() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceColor,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-    ),
-  );
-}
+      builder: (context) => _ExerciseLibrarySheet(
+        exercises: _exercises,
+        exerciseHistory: _exerciseHistory,
+        onExerciseTap: (exercise) {
+          Navigator.pop(context);
+          _showExerciseDetails(exercise);
+        },
+        onExerciseLongPress: (exercise) {
+          Navigator.pop(context);
+          _showExerciseOptions(exercise);
+        },
+      ),
+    );
+  }
+
+  // Keep old method as alias for backward compatibility
+  void _showAllExercises() => _showExerciseLibrary();
+
+  void _showStretchLibrary() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceColor,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => _StretchLibrarySheet(
+        stretches: _stretches,
+        onStretchTap: (stretch) {
+          Navigator.pop(context);
+          _showStretchOptions(stretch);
+        },
+      ),
+    );
+  }
 
 
   void _showWorkoutDetails(Workout workout) {
@@ -3096,7 +3231,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold)),
                             Text(
-                              '${e.sets.length} sets â€¢ ${e.sets.map((s) => '${s.weight}lb x ${s.reps}').join(', ')}',
+                              '${e.sets.length} sets \u{2022} ${e.sets.map((s) => '${s.weight}lb x ${s.reps}').join(', ')}',
                               style: TextStyle(
                                   color: Colors.grey.shade500, fontSize: 12),
                               maxLines: 2,
@@ -3592,7 +3727,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     value: isSelected,
                     onChanged: (v) => setDialogState(() { if (v == true) selection.add(exercise); else selection.removeWhere((e) => e.id == exercise.id); }),
                     title: Text(exercise.name, overflow: TextOverflow.ellipsis),
-                    subtitle: Text('${exercise.muscleGroup ?? "General"} â€” ${exercise.defaultSets} sets', style: TextStyle(color: Colors.grey.shade500)),
+                    subtitle: Text('${exercise.muscleGroup ?? "General"} -ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ${exercise.defaultSets} sets', style: TextStyle(color: Colors.grey.shade500)),
                     secondary: exercise.photoPath != null
                         ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(exercise.photoPath!), width: 48, height: 48, fit: BoxFit.cover))
                         : Container(width: 48, height: 48, decoration: BoxDecoration(color: AppTheme.cardColor, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.fitness_center)),
@@ -3759,11 +3894,11 @@ class _WorkoutTabState extends State<WorkoutTab> {
                           return Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(color: AppTheme.cardColorLight, borderRadius: BorderRadius.circular(8)),
-                            child: Text('${set.weight.toStringAsFixed(0)} lbs Ã— ${set.reps}', style: const TextStyle(fontSize: 12)),
+                            child: Text('${set.weight.toStringAsFixed(0)} lbs \u{00D7} ${set.reps}', style: const TextStyle(fontSize: 12)),
                           );
                         }).toList()),
                         const SizedBox(height: 8),
-                        Text('Max: ${maxWeight.toStringAsFixed(0)} lbs â€¢ Volume: ${totalVolume.toStringAsFixed(0)} lbs', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                        Text('Max: ${maxWeight.toStringAsFixed(0)} lbs \u{2022} Volume: ${totalVolume.toStringAsFixed(0)} lbs', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
                       ]),
                     ),
                   );
@@ -3781,7 +3916,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
                 ],
                 
                 const SizedBox(height: 20),
-                Text('Default: ${exercise.defaultSets} sets Ã— ${exercise.repsDisplay}', style: TextStyle(color: Colors.grey.shade500)),
+                Text('Default: ${exercise.defaultSets} sets \u{00D7} ${exercise.repsDisplay}', style: TextStyle(color: Colors.grey.shade500)),
               ]),
             ),
           ),
@@ -3914,6 +4049,509 @@ class MuscleGroups {
     'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 
     'Legs', 'Glutes', 'Core', 'Full Body', 'Other'
   ];
+}
+
+// ============================================================
+// EXERCISE LIBRARY SHEET WITH SEARCH
+// ============================================================
+
+class _ExerciseLibrarySheet extends StatefulWidget {
+  final List<SavedExercise> exercises;
+  final Map<String, ExerciseHistory>? exerciseHistory;
+  final Function(SavedExercise) onExerciseTap;
+  final Function(SavedExercise) onExerciseLongPress;
+
+  const _ExerciseLibrarySheet({
+    required this.exercises,
+    required this.exerciseHistory,
+    required this.onExerciseTap,
+    required this.onExerciseLongPress,
+  });
+
+  @override
+  State<_ExerciseLibrarySheet> createState() => _ExerciseLibrarySheetState();
+}
+
+class _ExerciseLibrarySheetState extends State<_ExerciseLibrarySheet> {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  String? _selectedMuscleGroup;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<SavedExercise> get _filteredExercises {
+    var filtered = widget.exercises.toList();
+    
+    // Filter by search query
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((e) => 
+        e.name.toLowerCase().contains(_searchQuery) ||
+        (e.muscleGroup?.toLowerCase().contains(_searchQuery) ?? false)
+      ).toList();
+    }
+    
+    // Filter by muscle group
+    if (_selectedMuscleGroup != null) {
+      filtered = filtered.where((e) => e.muscleGroup == _selectedMuscleGroup).toList();
+    }
+    
+    // Sort by times used (most used first)
+    filtered.sort((a, b) => b.timesUsed.compareTo(a.timesUsed));
+    
+    return filtered;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade600,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Exercise Library', style: Theme.of(context).textTheme.titleLarge),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.fitness_center, color: AppTheme.primaryColor),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search exercises...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: AppTheme.cardColor,
+              ),
+              onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+            ),
+          ),
+          // Muscle group filter chips
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: const Text('All'),
+                    selected: _selectedMuscleGroup == null,
+                    onSelected: (_) => setState(() => _selectedMuscleGroup = null),
+                  ),
+                ),
+                ...MuscleGroups.all.map((group) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(group),
+                    selected: _selectedMuscleGroup == group,
+                    onSelected: (_) => setState(() => 
+                      _selectedMuscleGroup = _selectedMuscleGroup == group ? null : group
+                    ),
+                  ),
+                )),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Results count
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Text(
+                  '${_filteredExercises.length} exercise${_filteredExercises.length == 1 ? '' : 's'}',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Exercise list
+          Expanded(
+            child: _filteredExercises.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.fitness_center, size: 48, color: Colors.grey.shade600),
+                        const SizedBox(height: 16),
+                        Text(
+                          _searchQuery.isEmpty && _selectedMuscleGroup == null
+                              ? 'No exercises saved yet'
+                              : 'No exercises match your search',
+                          style: TextStyle(color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _filteredExercises.length,
+                    itemBuilder: (context, index) {
+                      final exercise = _filteredExercises[index];
+                      final history = widget.exerciseHistory?[exercise.name];
+                      final shouldIncrease = history != null && history.consecutiveGoalsMet >= 3;
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          onTap: () => widget.onExerciseTap(exercise),
+                          onLongPress: () => widget.onExerciseLongPress(exercise),
+                          leading: exercise.photoPath != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.file(
+                                    File(exercise.photoPath!),
+                                    width: 48,
+                                    height: 48,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.cardColor,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(Icons.fitness_center),
+                                    ),
+                                  ),
+                                )
+                              : Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.cardColor,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.fitness_center),
+                                ),
+                          title: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  exercise.name,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (shouldIncrease) ...[
+                                const SizedBox(width: 8),
+                                Icon(Icons.trending_up, color: AppTheme.successColor, size: 16),
+                              ],
+                            ],
+                          ),
+                          subtitle: Text(
+                            '${exercise.muscleGroup ?? "General"} \u{2022} ${exercise.defaultSets} sets \u{2022} ${exercise.repsDisplay}',
+                            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (exercise.timesUsed > 0)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryColor.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '${exercise.timesUsed}x',
+                                    style: TextStyle(color: AppTheme.primaryColor, fontSize: 11),
+                                  ),
+                                ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.chevron_right, color: Colors.grey.shade500, size: 20),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// STRETCH LIBRARY SHEET WITH SEARCH
+// ============================================================
+
+class _StretchLibrarySheet extends StatefulWidget {
+  final List<SavedStretch> stretches;
+  final Function(SavedStretch) onStretchTap;
+
+  const _StretchLibrarySheet({
+    required this.stretches,
+    required this.onStretchTap,
+  });
+
+  @override
+  State<_StretchLibrarySheet> createState() => _StretchLibrarySheetState();
+}
+
+class _StretchLibrarySheetState extends State<_StretchLibrarySheet> {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  String? _selectedMuscleGroup;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<SavedStretch> get _filteredStretches {
+    var filtered = widget.stretches.toList();
+    
+    // Filter by search query
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((s) => 
+        s.name.toLowerCase().contains(_searchQuery) ||
+        (s.muscleGroup?.toLowerCase().contains(_searchQuery) ?? false)
+      ).toList();
+    }
+    
+    // Filter by muscle group
+    if (_selectedMuscleGroup != null) {
+      filtered = filtered.where((s) => s.muscleGroup == _selectedMuscleGroup).toList();
+    }
+    
+    // Sort alphabetically
+    filtered.sort((a, b) => a.name.compareTo(b.name));
+    
+    return filtered;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade600,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Stretch Library', style: Theme.of(context).textTheme.titleLarge),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.self_improvement, color: Colors.teal),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search stretches...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: AppTheme.cardColor,
+              ),
+              onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+            ),
+          ),
+          // Muscle group filter chips
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: const Text('All'),
+                    selected: _selectedMuscleGroup == null,
+                    onSelected: (_) => setState(() => _selectedMuscleGroup = null),
+                  ),
+                ),
+                ...StretchMuscleGroups.all.map((group) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(group),
+                    selected: _selectedMuscleGroup == group,
+                    onSelected: (_) => setState(() => 
+                      _selectedMuscleGroup = _selectedMuscleGroup == group ? null : group
+                    ),
+                  ),
+                )),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Results count
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Text(
+                  '${_filteredStretches.length} stretch${_filteredStretches.length == 1 ? '' : 'es'}',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Stretch list
+          Expanded(
+            child: _filteredStretches.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.self_improvement, size: 48, color: Colors.grey.shade600),
+                        const SizedBox(height: 16),
+                        Text(
+                          _searchQuery.isEmpty && _selectedMuscleGroup == null
+                              ? 'No stretches saved yet'
+                              : 'No stretches match your search',
+                          style: TextStyle(color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _filteredStretches.length,
+                    itemBuilder: (context, index) {
+                      final stretch = _filteredStretches[index];
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          onTap: () => widget.onStretchTap(stretch),
+                          leading: stretch.photoPath != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.file(
+                                    File(stretch.photoPath!),
+                                    width: 48,
+                                    height: 48,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: Colors.teal.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(Icons.accessibility_new, color: Colors.teal),
+                                    ),
+                                  ),
+                                )
+                              : Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: Colors.teal.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.accessibility_new, color: Colors.teal),
+                                ),
+                          title: Text(
+                            stretch.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '${stretch.defaultDuration}s \u{2022} ${stretch.muscleGroup ?? "General"}',
+                            style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: Icon(Icons.chevron_right, color: Colors.grey.shade500, size: 20),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class RoutineColors {
