@@ -1,6 +1,9 @@
 # health_tracker
 
+Compressed fitness app on google drive here
+https://drive.google.com/file/d/1PdfYWXY3XBWPnxRF-m99MfgjHJ3RNEKg/view?usp=drive_link
 
+For questions or feedback dm me on discord tiv0000
 
 # Importing Routines
 
@@ -189,3 +192,4 @@ Here are some suggested colors for your routines:
   ```
 
 - **Exporting**: You can export any of your routines to JSON using the menu on each routine card. This is great for sharing or backup.
+
