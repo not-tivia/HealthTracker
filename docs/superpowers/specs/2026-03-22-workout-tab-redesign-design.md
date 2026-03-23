@@ -13,7 +13,7 @@ Keep the existing circular progress indicator showing "3/4 this week" style prog
 - **Streak (current)** — consecutive weeks where the weekly workout goal was met
 - **Trophy (best)** — the longest streak ever achieved
 
-These reuse the existing `currentStreak` and `bestStreak` fields on UserSettings but change their semantics from day-based to week-based. The existing `StorageService.calculateStreak()` will be updated to compute weekly streaks: at the end of each calendar week (Sunday midnight), if `weeklyWorkoutCount >= weeklyWorkoutGoal`, increment `currentStreak`; otherwise reset to 0 and update `bestStreak` if the current streak was the longest.
+These already exist — the current `currentStreak` and `bestStreak` fields on UserSettings and `StorageService.calculateStreak()` are kept as-is (day-based streaks). No changes needed.
 
 #### 2. Weekly Day Row + Cardio Button
 The existing M T W T F S S row with checkmarks stays as-is. Add a **"Cardio completed"** button next to the row.
@@ -111,9 +111,9 @@ All new data is stored in `appDataBox` (the existing untyped Hive `Box('app_data
 - `workout_rotation_order: List<String>` — ordered routine IDs for the active rotation
 - `stretch_pairings: Map<String, dynamic>` — workout routine ID → `{"warmUp": stretchId, "warmDown": stretchId}`
 
-### Modified UserSettings fields (existing):
-- `currentStreak` (HiveField 12) — reused, semantics changed from day-streak to week-streak
-- `bestStreak` (HiveField 11) — reused, semantics changed from day-best to week-best
+### Unchanged UserSettings fields:
+- `currentStreak` (HiveField 12) — kept as daily streak, no changes
+- `bestStreak` (HiveField 11) — kept as daily best, no changes
 
 ### New SharedPreferences keys:
 - `cardio_override_YYYY-MM-DD: bool` — manual step goal override for a specific date
@@ -126,7 +126,6 @@ All new data is stored in `appDataBox` (the existing untyped Hive `Box('app_data
 
 The current `workout_tab.dart` is 2700+ lines. This redesign should extract new UI into separate widget files:
 
-- `lib/widgets/weekly_goal_ring.dart` — the circular progress + streak/trophy display
 - `lib/widgets/routine_circles.dart` — the 3 tappable routine circles with highlight logic
 - `lib/widgets/stretch_workout_toggle.dart` — the toggle buttons
 - `lib/widgets/workout_day_suggestion.dart` — the "Today is X day" banner
@@ -137,7 +136,7 @@ Existing sections that remain below the fold stay in `workout_tab.dart` for now.
 ## Files Modified
 
 - `lib/screens/workout_tab.dart` — main redesign target, restructure top section, delegate to new widgets
-- `lib/services/storage_service.dart` — new methods for rotation management, streak calculation (weekly), pairing lookups, using `appDataBox`
+- `lib/services/storage_service.dart` — new methods for rotation management, pairing lookups, using `appDataBox`
 - `lib/services/step_tracking_service.dart` — cardio goal override support via SharedPreferences
 - `lib/screens/settings_tab.dart` — new sections for rotation management and stretch-workout linking
 - `lib/screens/workout_session_screen.dart` — post-workout popup before popping back

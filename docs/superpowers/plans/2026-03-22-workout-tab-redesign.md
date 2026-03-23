@@ -4,7 +4,7 @@
 
 **Goal:** Redesign the workout tab to surface workout rotation, quick-launch circles, and smart stretch suggestions at the top, pushing existing clutter below the fold.
 
-**Architecture:** New service methods in StorageService (rotation, pairing, streak) and StepTrackingService (cardio override) provide data to 5 new extracted widgets that compose the workout tab's top section. Existing sections are preserved below. Settings tab gains rotation management UI.
+**Architecture:** New service methods in StorageService (rotation, pairing) and StepTrackingService (cardio override) provide data to 4 new extracted widgets that compose the workout tab's top section. Existing weekly goal card and streak display are kept as-is. Existing sections are preserved below the fold. Settings tab gains rotation management UI.
 
 **Tech Stack:** Flutter/Dart, Provider, Hive (appDataBox for new data), SharedPreferences (cardio overrides), fl_chart, percent_indicator
 
@@ -17,19 +17,18 @@
 ### New Files
 | File | Responsibility |
 |------|---------------|
-| `lib/widgets/weekly_goal_ring.dart` | Circular progress ring + streak/trophy display |
 | `lib/widgets/stretch_workout_toggle.dart` | Two-button toggle switching stretch/workout circle content |
 | `lib/widgets/routine_circles.dart` | Up to 3 tappable routine circles with highlight logic |
 | `lib/widgets/workout_day_suggestion.dart` | "Today is X day" banner + stretch suggestion banner |
 | `lib/widgets/post_workout_popup.dart` | Post-workout warm-down stretch prompt dialog |
-| `test/services/storage_service_rotation_test.dart` | Tests for rotation, pairing, streak logic |
+| `test/services/storage_service_rotation_test.dart` | Tests for rotation and pairing logic |
 | `test/services/step_tracking_cardio_test.dart` | Tests for cardio goal override |
 | `test/widgets/routine_circles_test.dart` | Tests for circle display logic |
 
 ### Modified Files
 | File | Changes |
 |------|---------|
-| `lib/services/storage_service.dart` | Add rotation CRUD, stretch pairing CRUD, weekly streak calculation |
+| `lib/services/storage_service.dart` | Add rotation CRUD, stretch pairing CRUD |
 | `lib/services/step_tracking_service.dart` | Add cardio goal override (SharedPreferences) |
 | `lib/screens/workout_tab.dart` | Restructure build() to use new widgets at top, push existing sections below |
 | `lib/screens/workout_session_screen.dart:554-630` | Add post-workout popup before popping back |
@@ -564,268 +563,7 @@ git commit -m "feat: add cardio goal override to StepTrackingService"
 
 ---
 
-## Task 4: Storage Service — Weekly Streak Calculation
-
-**Files:**
-- Modify: `lib/services/storage_service.dart:343-376` (existing `calculateStreak`)
-- Test: `test/services/storage_service_rotation_test.dart` (add group)
-
-- [ ] **Step 1: Write failing tests for weekly streak**
-
-Add to `test/services/storage_service_rotation_test.dart`:
-
-```dart
-group('Weekly Streak', () {
-  test('calculateWeeklyStreak returns 0 with no workouts', () {
-    expect(StorageService.calculateWeeklyStreak([], weeklyGoal: 4), 0);
-  });
-
-  test('calculateWeeklyStreak returns 1 when current week meets goal', () {
-    final now = DateTime.now();
-    final workouts = List.generate(4, (i) => _createDummyWorkout(
-      now.subtract(Duration(days: i)),
-    ));
-    expect(StorageService.calculateWeeklyStreak(workouts, weeklyGoal: 4), 1);
-  });
-
-  test('calculateWeeklyStreak counts consecutive weeks', () {
-    final now = DateTime.now();
-    // 4 workouts this week + 4 workouts last week
-    final workouts = [
-      ...List.generate(4, (i) => _createDummyWorkout(now.subtract(Duration(days: i)))),
-      ...List.generate(4, (i) => _createDummyWorkout(now.subtract(Duration(days: 7 + i)))),
-    ];
-    expect(StorageService.calculateWeeklyStreak(workouts, weeklyGoal: 4), 2);
-  });
-
-  test('calculateWeeklyStreak breaks on missed week', () {
-    final now = DateTime.now();
-    // 4 this week, skip last week, 4 two weeks ago
-    final workouts = [
-      ...List.generate(4, (i) => _createDummyWorkout(now.subtract(Duration(days: i)))),
-      ...List.generate(4, (i) => _createDummyWorkout(now.subtract(Duration(days: 14 + i)))),
-    ];
-    expect(StorageService.calculateWeeklyStreak(workouts, weeklyGoal: 4), 1);
-  });
-});
-
-// Helper at bottom of file:
-Workout _createDummyWorkout(DateTime date) {
-  return Workout(
-    id: date.millisecondsSinceEpoch.toString(),
-    name: 'Test',
-    type: 'Test',
-    date: date,
-    exercises: [],
-    durationMinutes: 30,
-  );
-}
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cd ~/HealthTracker && flutter test test/services/storage_service_rotation_test.dart`
-Expected: FAIL — `calculateWeeklyStreak` doesn't exist
-
-- [ ] **Step 3: Implement weekly streak calculation**
-
-Add static method to `lib/services/storage_service.dart`:
-
-```dart
-/// Calculate consecutive weeks where workout count met the weekly goal.
-/// Counts backwards from current week.
-static int calculateWeeklyStreak(List<Workout> workouts, {required int weeklyGoal}) {
-  if (workouts.isEmpty || weeklyGoal <= 0) return 0;
-
-  final now = DateTime.now();
-  int streak = 0;
-
-  // Start from current week, go backwards
-  for (int weeksAgo = 0; weeksAgo < 52; weeksAgo++) {
-    final weekStart = _getWeekStart(now.subtract(Duration(days: weeksAgo * 7)));
-    final weekEnd = weekStart.add(const Duration(days: 7));
-
-    final count = workouts.where((w) =>
-      w.date.isAfter(weekStart.subtract(const Duration(seconds: 1))) &&
-      w.date.isBefore(weekEnd)
-    ).length;
-
-    if (count >= weeklyGoal) {
-      streak++;
-    } else {
-      // Current week is allowed to be incomplete (it's not over yet)
-      if (weeksAgo == 0) continue;
-      break;
-    }
-  }
-
-  return streak;
-}
-
-static DateTime _getWeekStart(DateTime date) {
-  final daysFromMonday = date.weekday - 1;
-  return DateTime(date.year, date.month, date.day - daysFromMonday);
-}
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cd ~/HealthTracker && flutter test test/services/storage_service_rotation_test.dart`
-Expected: All tests PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-cd ~/HealthTracker
-git add lib/services/storage_service.dart test/services/storage_service_rotation_test.dart
-git commit -m "feat: add weekly streak calculation to StorageService"
-```
-
----
-
-## Task 5: Widget — Weekly Goal Ring
-
-**Files:**
-- Create: `lib/widgets/weekly_goal_ring.dart`
-
-This widget extracts the existing weekly goal card logic from `workout_tab.dart:354-391` into a standalone widget, adding streak and trophy display.
-
-- [ ] **Step 1: Create the widget file**
-
-```dart
-// lib/widgets/weekly_goal_ring.dart
-import 'package:flutter/material.dart';
-import 'package:percent_indicator/circular_percent_indicator.dart';
-import '../theme/app_theme.dart';
-
-class WeeklyGoalRing extends StatelessWidget {
-  final int completedWorkouts;
-  final int weeklyGoal;
-  final int currentStreak;
-  final int bestStreak;
-
-  const WeeklyGoalRing({
-    super.key,
-    required this.completedWorkouts,
-    required this.weeklyGoal,
-    required this.currentStreak,
-    required this.bestStreak,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final progress = weeklyGoal > 0
-        ? (completedWorkouts / weeklyGoal).clamp(0.0, 1.0)
-        : 0.0;
-    final remaining = (weeklyGoal - completedWorkouts).clamp(0, weeklyGoal);
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.cardColor,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          CircularPercentIndicator(
-            radius: 50,
-            lineWidth: 10,
-            percent: progress,
-            center: Text(
-              '$completedWorkouts/$weeklyGoal',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            progressColor: AppTheme.primaryColor,
-            backgroundColor: AppTheme.cardColorLight,
-            circularStrokeCap: CircularStrokeCap.round,
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Weekly Goal',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  remaining > 0
-                      ? '$remaining more to go!'
-                      : 'Goal reached!',
-                  style: TextStyle(
-                    color: remaining > 0
-                        ? AppTheme.textSecondary
-                        : AppTheme.successColor,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(Icons.local_fire_department,
-                        size: 16, color: AppTheme.warningColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$currentStreak',
-                      style: TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    Text(
-                      ' streak',
-                      style: TextStyle(
-                        color: AppTheme.textTertiary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Icon(Icons.emoji_events,
-                        size: 16, color: AppTheme.warningColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$bestStreak',
-                      style: TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    Text(
-                      ' best',
-                      style: TextStyle(
-                        color: AppTheme.textTertiary,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-```
-
-- [ ] **Step 2: Verify it compiles**
-
-Run: `cd ~/HealthTracker && flutter analyze lib/widgets/weekly_goal_ring.dart`
-Expected: No issues found
-
-- [ ] **Step 3: Commit**
-
-```bash
-cd ~/HealthTracker
-git add lib/widgets/weekly_goal_ring.dart
-git commit -m "feat: extract WeeklyGoalRing widget with streak/trophy display"
-```
+*(Tasks 4 and 5 removed — weekly goal ring with streak/trophy already exists in the codebase. Daily streak logic is kept as-is.)*
 
 ---
 
@@ -1299,7 +1037,6 @@ This is the largest task. The build method's Column children get reorganized: ne
 Add to top of `lib/screens/workout_tab.dart` (after existing imports):
 
 ```dart
-import '../widgets/weekly_goal_ring.dart';
 import '../widgets/stretch_workout_toggle.dart';
 import '../widgets/routine_circles.dart';
 import '../widgets/workout_day_suggestion.dart';
@@ -1336,8 +1073,8 @@ Replace the Column children in `build()` (lines 286-299) with the new layout ord
 ```dart
 children: [
   const SizedBox(height: 8),
-  // NEW: Weekly goal ring with streaks
-  _buildNewWeeklyGoalSection(),
+  // EXISTING: Weekly goal card (unchanged — already has streak/trophy)
+  _buildWeeklyGoalCard(constraints),
   const SizedBox(height: 16),
   // EXISTING: This week M-S row + NEW cardio button
   _buildThisWeekWithCardio(),
@@ -1368,44 +1105,7 @@ children: [
 ],
 ```
 
-- [ ] **Step 5: Implement _buildNewWeeklyGoalSection**
-
-```dart
-Widget _buildNewWeeklyGoalSection() {
-  final streak = StorageService.calculateWeeklyStreak(
-    _workouts,
-    weeklyGoal: _settings?.weeklyWorkoutGoal ?? 4,
-  );
-  final best = _settings?.bestStreak ?? 0;
-
-  return WeeklyGoalRing(
-    completedWorkouts: _weeklyWorkoutCount,
-    weeklyGoal: _settings?.weeklyWorkoutGoal ?? 4,
-    currentStreak: streak,
-    bestStreak: streak > best ? streak : best,
-  );
-}
-```
-
-Also add a post-frame callback in `_loadData()` (after `setState`) to persist the best streak
-if it changed — this avoids calling `saveUserSettings` inside a build method:
-
-```dart
-// At end of _loadData(), after setState:
-WidgetsBinding.instance.addPostFrameCallback((_) {
-  final streak = StorageService.calculateWeeklyStreak(
-    _workouts,
-    weeklyGoal: _settings?.weeklyWorkoutGoal ?? 4,
-  );
-  if (streak > (_settings?.bestStreak ?? 0)) {
-    final storage = context.read<StorageService>();
-    final updated = _settings!.copyWith(bestStreak: streak);
-    storage.saveUserSettings(updated);
-  }
-});
-```
-
-- [ ] **Step 6: Implement _buildThisWeekWithCardio**
+- [ ] **Step 5: Implement _buildThisWeekWithCardio**
 
 Modify the existing `_buildThisWeekCard()` to add the cardio button. Add to the Row inside the card, after the M-S indicators:
 
