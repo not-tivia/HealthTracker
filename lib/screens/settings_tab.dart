@@ -76,6 +76,9 @@ class _SettingsTabState extends State<SettingsTab> {
             _buildSectionHeader('Goals'),
             _buildGoalsSection(),
             const SizedBox(height: 24),
+            _buildSectionHeader('Workout Rotation'),
+            _buildRotationSection(),
+            const SizedBox(height: 24),
             _buildSectionHeader('Daily Checklist'),
             _buildChecklistSection(),
             const SizedBox(height: 24),
@@ -1840,6 +1843,154 @@ class _SettingsTabState extends State<SettingsTab> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildRotationSection() {
+    final storage = context.read<StorageService>();
+    final rotationOrder = storage.getWorkoutRotationOrder();
+    final allRoutines = storage.getAllWorkoutRoutines();
+
+    final rotationRoutines = rotationOrder
+        .map((id) => allRoutines.where((r) => r.id == id).firstOrNull)
+        .where((r) => r != null)
+        .cast<WorkoutRoutine>()
+        .toList();
+
+    final availableRoutines = allRoutines
+        .where((r) => !rotationOrder.contains(r.id))
+        .toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          if (rotationRoutines.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                'No routines in rotation. Add routines below.',
+                style: TextStyle(color: AppTheme.textTertiary),
+              ),
+            )
+          else
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: rotationRoutines.length,
+              onReorder: (oldIndex, newIndex) async {
+                if (newIndex > oldIndex) newIndex--;
+                final order = List<String>.from(rotationOrder);
+                final item = order.removeAt(oldIndex);
+                order.insert(newIndex, item);
+                await storage.saveWorkoutRotationOrder(order);
+                setState(() {});
+              },
+              itemBuilder: (context, index) {
+                final routine = rotationRoutines[index];
+                return Dismissible(
+                  key: ValueKey(routine.id),
+                  direction: DismissDirection.endToStart,
+                  background: Container(
+                    color: AppTheme.accentColor,
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 16),
+                    child: const Icon(Icons.remove_circle, color: Colors.white),
+                  ),
+                  onDismissed: (_) async {
+                    final order = List<String>.from(rotationOrder)..remove(routine.id);
+                    await storage.saveWorkoutRotationOrder(order);
+                    setState(() {});
+                  },
+                  child: ListTile(
+                    key: ValueKey(routine.id),
+                    leading: Icon(Icons.drag_handle, color: AppTheme.textTertiary),
+                    title: Text(routine.name, style: TextStyle(color: AppTheme.textPrimary)),
+                    subtitle: _buildPairingDropdowns(routine, storage),
+                  ),
+                );
+              },
+            ),
+          if (availableRoutines.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: OutlinedButton.icon(
+                onPressed: () => _showAddToRotationSheet(availableRoutines, storage, rotationOrder),
+                icon: const Icon(Icons.add),
+                label: const Text('Add to Rotation'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPairingDropdowns(WorkoutRoutine routine, StorageService storage) {
+    final pairing = storage.getStretchPairing(routine.id);
+    final allStretches = storage.getAllStretchRoutines();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Text('Warm-down: ', style: TextStyle(color: AppTheme.textTertiary, fontSize: 12)),
+            Expanded(
+              child: DropdownButton<String?>(
+                value: pairing?['warmDown'],
+                isExpanded: true,
+                underline: const SizedBox(),
+                hint: Text('None', style: TextStyle(color: AppTheme.textTertiary, fontSize: 12)),
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                dropdownColor: AppTheme.surfaceColor,
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('None')),
+                  ...allStretches.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))),
+                ],
+                onChanged: (id) async {
+                  await storage.saveStretchPairing(
+                    routine.id,
+                    warmUpId: pairing?['warmUp'],
+                    warmDownId: id,
+                  );
+                  setState(() {});
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void _showAddToRotationSheet(List<WorkoutRoutine> available, StorageService storage, List<String> currentOrder) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text('Add to Rotation', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 16),
+          ...available.map((r) => ListTile(
+            title: Text(r.name),
+            trailing: const Icon(Icons.add_circle_outline),
+            onTap: () async {
+              final order = List<String>.from(currentOrder)..add(r.id);
+              await storage.saveWorkoutRotationOrder(order);
+              Navigator.pop(context);
+              setState(() {});
+            },
+          )),
+        ],
       ),
     );
   }
