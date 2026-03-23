@@ -878,6 +878,80 @@ class StorageService extends ChangeNotifier {
     return result;
   }
 
+  // Stretch-workout pairings
+  Future<void> saveStretchPairing(String workoutRoutineId, {String? warmUpId, String? warmDownId}) async {
+    final pairings = Map<String, dynamic>.from(_appDataBox.get('stretch_pairings') ?? {});
+    pairings[workoutRoutineId] = {
+      'warmUp': warmUpId,
+      'warmDown': warmDownId,
+    };
+    await _appDataBox.put('stretch_pairings', pairings);
+    notifyListeners();
+  }
+
+  Map<String, String?>? getStretchPairing(String workoutRoutineId) {
+    final pairings = _appDataBox.get('stretch_pairings');
+    if (pairings == null) return null;
+    final map = Map<String, dynamic>.from(pairings);
+    if (!map.containsKey(workoutRoutineId)) return null;
+    final entry = Map<String, dynamic>.from(map[workoutRoutineId]);
+    return {
+      'warmUp': entry['warmUp'] as String?,
+      'warmDown': entry['warmDown'] as String?,
+    };
+  }
+
+  Future<void> removeStretchPairing(String workoutRoutineId) async {
+    final pairings = Map<String, dynamic>.from(_appDataBox.get('stretch_pairings') ?? {});
+    pairings.remove(workoutRoutineId);
+    await _appDataBox.put('stretch_pairings', pairings);
+    notifyListeners();
+  }
+
+  /// Checks if a stretch routine name matches a workout routine name using shared prefix logic.
+  static bool stretchNameMatchesWorkout({
+    required String workoutName,
+    required String stretchName,
+  }) {
+    final workoutLower = workoutName.toLowerCase().trim();
+    final stretchLower = stretchName.toLowerCase().trim();
+    return stretchLower.startsWith(workoutLower);
+  }
+
+  /// Finds the best matching warm-down stretch for a workout routine.
+  /// Checks explicit pairings first, then falls back to name matching.
+  String? findWarmDownStretch(String workoutRoutineId) {
+    // Check explicit pairing first
+    final pairing = getStretchPairing(workoutRoutineId);
+    if (pairing != null && pairing['warmDown'] != null) {
+      return pairing['warmDown'];
+    }
+
+    // Fall back to name matching
+    final routines = getAllWorkoutRoutines();
+    final workoutRoutine = routines.where((r) => r.id == workoutRoutineId).firstOrNull;
+    if (workoutRoutine == null) return null;
+
+    final stretches = getAllStretchRoutines();
+    for (final stretch in stretches) {
+      if (stretchNameMatchesWorkout(workoutName: workoutRoutine.name, stretchName: stretch.name)) {
+        final nameLower = stretch.name.toLowerCase();
+        if (nameLower.contains('warm down') || nameLower.contains('cooldown') || nameLower.contains('cool down')) {
+          return stretch.id;
+        }
+      }
+    }
+
+    // If no warm-down found, return any name match
+    for (final stretch in stretches) {
+      if (stretchNameMatchesWorkout(workoutName: workoutRoutine.name, stretchName: stretch.name)) {
+        return stretch.id;
+      }
+    }
+
+    return null;
+  }
+
   // Helper method
   String _getDateKey(DateTime date) {
     return DateFormat('yyyy-MM-dd').format(date);
