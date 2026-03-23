@@ -821,22 +821,56 @@ class _WorkoutTabState extends State<WorkoutTab> {
   Widget _buildStretchCircles(StorageService storage) {
     final recentStretches = _stretchRoutines.take(3).toList();
 
-    // Only suggest a warm-down stretch if a workout was completed TODAY
+    // If we did a workout today, suggest the warm-down for it.
+    // If not, suggest the warm-up for the next workout in rotation.
     String? suggestionText;
+    bool didWorkoutToday = false;
     if (_workouts.isNotEmpty) {
       final lastWorkout = _workouts.first;
       final now = DateTime.now();
-      final isToday = lastWorkout.date.year == now.year &&
+      didWorkoutToday = lastWorkout.date.year == now.year &&
           lastWorkout.date.month == now.month &&
           lastWorkout.date.day == now.day;
 
-      if (isToday && lastWorkout.routineId != null) {
-        // Suggest warm-down for the workout we just did today
+      if (didWorkoutToday && lastWorkout.routineId != null) {
         final warmDownId = storage.findWarmDownStretch(lastWorkout.routineId!);
         if (warmDownId != null) {
           final stretch = _stretchRoutines.where((s) => s.id == warmDownId).firstOrNull;
           if (stretch != null) {
             suggestionText = 'Suggested: ${stretch.name}';
+          }
+        }
+      }
+    }
+
+    // No workout today — suggest warm-up for the next scheduled workout
+    if (!didWorkoutToday) {
+      final nextId = storage.getNextInRotation(lastRoutineId: _lastCompletedRoutineId);
+      if (nextId != null) {
+        // Look for a warm-up stretch matching the next workout
+        final pairing = storage.getStretchPairing(nextId);
+        if (pairing != null && pairing['warmUp'] != null) {
+          final stretch = _stretchRoutines.where((s) => s.id == pairing['warmUp']).firstOrNull;
+          if (stretch != null) {
+            suggestionText = 'Warm up: ${stretch.name}';
+          }
+        }
+        // If no explicit warm-up pairing, try name matching for warm-up
+        if (suggestionText == null) {
+          final routine = _routines.where((r) => r.id == nextId).firstOrNull;
+          if (routine != null) {
+            for (final stretch in _stretchRoutines) {
+              if (StorageService.stretchNameMatchesWorkout(
+                workoutName: routine.name,
+                stretchName: stretch.name,
+              )) {
+                final nameLower = stretch.name.toLowerCase();
+                if (nameLower.contains('warm up') || nameLower.contains('warmup')) {
+                  suggestionText = 'Warm up: ${stretch.name}';
+                  break;
+                }
+              }
+            }
           }
         }
       }
