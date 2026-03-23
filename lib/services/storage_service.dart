@@ -837,6 +837,47 @@ class StorageService extends ChangeNotifier {
     return List<String>.from(order);
   }
 
+  // ============ WORKOUT ROTATION ORDER ============
+  Future<void> saveWorkoutRotationOrder(List<String> order) async {
+    await _appDataBox.put('workout_rotation_order', order);
+    notifyListeners();
+  }
+
+  List<String> getWorkoutRotationOrder() {
+    final order = _appDataBox.get('workout_rotation_order');
+    if (order == null) return [];
+    return List<String>.from(order);
+  }
+
+  /// Returns the next routine ID in the rotation after [lastRoutineId].
+  /// Returns null if rotation is empty.
+  String? getNextInRotation({required String? lastRoutineId}) {
+    final order = getWorkoutRotationOrder();
+    if (order.isEmpty) return null;
+    if (lastRoutineId == null) return order.first;
+
+    final index = order.indexOf(lastRoutineId);
+    if (index == -1) return order.first;
+    return order[(index + 1) % order.length];
+  }
+
+  /// Returns up to 3 routine IDs starting from the next in rotation.
+  List<String> getRotationCircles({required String? lastRoutineId}) {
+    final order = getWorkoutRotationOrder();
+    if (order.isEmpty) return [];
+
+    final nextId = getNextInRotation(lastRoutineId: lastRoutineId);
+    if (nextId == null) return [];
+
+    final startIndex = order.indexOf(nextId);
+    final count = order.length.clamp(0, 3);
+    final result = <String>[];
+    for (int i = 0; i < count; i++) {
+      result.add(order[(startIndex + i) % order.length]);
+    }
+    return result;
+  }
+
   // Helper method
   String _getDateKey(DateTime date) {
     return DateFormat('yyyy-MM-dd').format(date);
