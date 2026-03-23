@@ -660,7 +660,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     for (int i = 0; i < currentSets.length; i++) {
       final weight = double.tryParse(_weightControllers[_currentExerciseIndex]![i].text) ?? 0;
       final reps = int.tryParse(_repControllers[_currentExerciseIndex]![i].text) ?? 0;
-      savedSets.add(ExerciseSet(setNumber: i + 1, weight: weight, reps: reps));
+      // Only save sets where the user actually entered data
+      if (weight > 0 || reps > 0) {
+        savedSets.add(ExerciseSet(setNumber: i + 1, weight: weight, reps: reps));
+      }
     }
     if (savedSets.isNotEmpty) {
       final exercise = Exercise(
