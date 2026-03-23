@@ -32,6 +32,7 @@ class WorkoutSessionScreen extends StatefulWidget {
 }
 
 class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
+  late List<SavedExercise> _exercises;
   int _currentExerciseIndex = 0;
   final List<Exercise> _completedExercises = [];
   final Map<int, List<ExerciseSet>> _exerciseSets = {};
@@ -45,13 +46,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   @override
   void initState() {
     super.initState();
+    _exercises = List.from(widget.exercises);
     _initializeSets();
     _loadHistory();
   }
 
   void _initializeSets() {
-    for (int i = 0; i < widget.exercises.length; i++) {
-      final exercise = widget.exercises[i];
+    for (int i = 0; i < _exercises.length; i++) {
+      final exercise = _exercises[i];
       _exerciseSets[i] = List.generate(
         exercise.defaultSets,
         (setIndex) => ExerciseSet(setNumber: setIndex + 1, weight: 0, reps: exercise.defaultMinReps),
@@ -70,8 +72,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       _allWorkouts = allWorkouts;
       _isLoading = false;
     });
-    for (int i = 0; i < widget.exercises.length; i++) {
-      final lastHistory = history[widget.exercises[i].name];
+    for (int i = 0; i < _exercises.length; i++) {
+      final lastHistory = history[_exercises[i].name];
       if (lastHistory != null) {
         // Use minWeight to help users complete full sets
         // This is especially helpful when user couldn't complete all sets last time
@@ -98,7 +100,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     super.dispose();
   }
 
-  SavedExercise get _currentExercise => widget.exercises[_currentExerciseIndex];
+  SavedExercise get _currentExercise => _exercises[_currentExerciseIndex];
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +126,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           Center(
             child: Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: Text('${_currentExerciseIndex + 1}/${widget.exercises.length}',
+              child: Text('${_currentExerciseIndex + 1}/${_exercises.length}',
                   style: TextStyle(color: Colors.grey.shade400, fontSize: 16)),
             ),
           ),
@@ -133,7 +135,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       body: Column(
         children: [
           LinearProgressIndicator(
-            value: (_currentExerciseIndex + 1) / widget.exercises.length,
+            value: (_currentExerciseIndex + 1) / _exercises.length,
             backgroundColor: Colors.grey.shade800,
             minHeight: 3,
           ),
@@ -178,7 +180,22 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(_currentExercise.name, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+        Row(
+          children: [
+            Expanded(
+              child: Text(_currentExercise.name, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+            ),
+            IconButton(
+              onPressed: _showSwapExerciseSheet,
+              icon: const Icon(Icons.swap_horiz),
+              tooltip: 'Swap exercise',
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.grey.shade800,
+                foregroundColor: Colors.grey.shade300,
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -585,7 +602,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
   Widget _buildBottomNavigation() {
     final isFirst = _currentExerciseIndex == 0;
-    final isLast = _currentExerciseIndex == widget.exercises.length - 1;
+    final isLast = _currentExerciseIndex == _exercises.length - 1;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -697,7 +714,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final storage = context.read<StorageService>();
 
     // Update exercise usage counts
-    for (final ex in widget.exercises) {
+    for (final ex in _exercises) {
       await storage.incrementExerciseUsage(ex.id);
     }
 
@@ -849,5 +866,175 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         ],
       ),
     );
+  }
+
+  void _showSwapExerciseSheet() {
+    final storage = context.read<StorageService>();
+    final allExercises = storage.getAllSavedExercises();
+    final currentMuscleGroup = _currentExercise.muscleGroup;
+
+    // Filter to same muscle group, exclude current exercise
+    final sameGroup = allExercises
+        .where((e) => e.id != _currentExercise.id &&
+                      e.muscleGroup != null &&
+                      e.muscleGroup == currentMuscleGroup)
+        .toList();
+
+    // Also include "Other" exercises that could work
+    final otherExercises = allExercises
+        .where((e) => e.id != _currentExercise.id &&
+                      (e.muscleGroup == null || e.muscleGroup != currentMuscleGroup))
+        .toList();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey.shade900,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.85,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade600,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Swap ${_currentExercise.name}',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Pick a replacement for this session only',
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  if (sameGroup.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        currentMuscleGroup ?? 'Same Muscle Group',
+                        style: const TextStyle(
+                          color: Color(0xFF6C63FF),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    ...sameGroup.map((exercise) => _buildSwapExerciseTile(exercise)),
+                    const SizedBox(height: 16),
+                  ],
+                  if (otherExercises.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'Other Exercises',
+                        style: TextStyle(
+                          color: Colors.grey.shade400,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    ...otherExercises.map((exercise) => _buildSwapExerciseTile(exercise)),
+                  ],
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwapExerciseTile(SavedExercise exercise) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade800,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Icon(Icons.fitness_center, size: 20),
+      ),
+      title: Text(exercise.name),
+      subtitle: Text(
+        '${exercise.defaultSets} sets \u{00D7} ${exercise.repsDisplay}${exercise.muscleGroup != null ? ' \u{00B7} ${exercise.muscleGroup}' : ''}',
+        style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+      ),
+      trailing: const Icon(Icons.swap_horiz, size: 20),
+      onTap: () {
+        Navigator.pop(context);
+        _swapExercise(exercise);
+      },
+    );
+  }
+
+  void _swapExercise(SavedExercise newExercise) {
+    // Save current exercise data first
+    _saveCurrentExercise();
+
+    setState(() {
+      // Replace exercise in the local list
+      _exercises[_currentExerciseIndex] = newExercise;
+
+      // Dispose old controllers for this index
+      for (var c in _weightControllers[_currentExerciseIndex]!) {
+        c.dispose();
+      }
+      for (var c in _repControllers[_currentExerciseIndex]!) {
+        c.dispose();
+      }
+
+      // Reinitialize sets and controllers for the new exercise
+      _exerciseSets[_currentExerciseIndex] = List.generate(
+        newExercise.defaultSets,
+        (setIndex) => ExerciseSet(setNumber: setIndex + 1, weight: 0, reps: newExercise.defaultMinReps),
+      );
+      _weightControllers[_currentExerciseIndex] = List.generate(
+        newExercise.defaultSets,
+        (_) => TextEditingController(),
+      );
+      _repControllers[_currentExerciseIndex] = List.generate(
+        newExercise.defaultSets,
+        (_) => TextEditingController(text: '${newExercise.defaultMinReps}'),
+      );
+
+      // Pre-fill weight from history if available
+      final lastHistory = _exerciseHistory?[newExercise.name];
+      if (lastHistory != null && lastHistory.lastWeight > 0) {
+        final weightToUse = lastHistory.minWeight > 0
+            ? lastHistory.minWeight
+            : lastHistory.lastWeight;
+        for (var c in _weightControllers[_currentExerciseIndex]!) {
+          c.text = weightToUse.toStringAsFixed(0);
+        }
+      }
+    });
   }
 }
