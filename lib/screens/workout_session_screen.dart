@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
@@ -36,6 +38,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   final Map<int, List<TextEditingController>> _weightControllers = {};
   final Map<int, List<TextEditingController>> _repControllers = {};
   Map<String, ExerciseHistory>? _exerciseHistory;
+  List<Workout> _allWorkouts = [];
   bool _isLoading = true;
   final DateTime _startTime = DateTime.now();
 
@@ -61,8 +64,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   Future<void> _loadHistory() async {
     final storage = context.read<StorageService>();
     final history = await storage.getExerciseHistory();
+    final allWorkouts = storage.getAllWorkouts();
     setState(() {
       _exerciseHistory = history;
+      _allWorkouts = allWorkouts;
       _isLoading = false;
     });
     for (int i = 0; i < widget.exercises.length; i++) {
@@ -147,7 +152,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   const SizedBox(height: 24),
                   _buildSetsSection(),
                   const SizedBox(height: 24),
-                  _buildLastSessionInfo(),
+                  _buildExerciseProgressSection(),
                   if (_currentExercise.notes != null && _currentExercise.notes!.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     _buildNotesSection(),
@@ -390,58 +395,182 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
   }
 
-  Widget _buildLastSessionInfo() {
+  Widget _buildExerciseProgressSection() {
     final history = _exerciseHistory?[_currentExercise.name];
-    if (history == null) return const SizedBox.shrink();
+    final exerciseWorkouts = _allWorkouts
+        .where((w) => w.exercises.any((e) => e.name == _currentExercise.name))
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade800.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade700),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.history, size: 18, color: Colors.grey.shade400),
-              const SizedBox(width: 8),
-              Text('Last Session', style: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.w500)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildHistoryStat('Weight', '${history.lastWeight.toStringAsFixed(0)} lbs'),
-              _buildHistoryStat('Reps', '${history.lastReps}'),
-              _buildHistoryStat('Sessions', '${history.sessionCount}'),
-            ],
-          ),
-          if (history.consecutiveGoalsMet >= 2)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(color: Colors.green.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-                child: Row(
+    // Build chart data from last 10 sessions
+    final chartData = <FlSpot>[];
+    final workoutDates = <String>[];
+    for (int i = 0; i < exerciseWorkouts.length && i < 10; i++) {
+      final workout = exerciseWorkouts[exerciseWorkouts.length - 1 - i];
+      final ex = workout.exercises.firstWhere((e) => e.name == _currentExercise.name);
+      if (ex.completedSets.isNotEmpty) {
+        final maxWeight = ex.completedSets.map((s) => s.weight).reduce((a, b) => a > b ? a : b);
+        chartData.add(FlSpot(i.toDouble(), maxWeight));
+        workoutDates.add(DateFormat('M/d').format(workout.date));
+      }
+    }
+
+    if (history == null && exerciseWorkouts.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Quick stats row (like the old Last Session but better)
+        if (history != null) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade800.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade700),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    const Icon(Icons.trending_up, color: Colors.green, size: 18),
+                    Icon(Icons.history, size: 18, color: Colors.grey.shade400),
                     const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '${history.consecutiveGoalsMet} sessions hitting target - consider increasing weight!',
-                        style: const TextStyle(color: Colors.green, fontSize: 12),
-                      ),
-                    ),
+                    Text('Last Session', style: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.w500)),
                   ],
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildHistoryStat('Weight', '${history.lastWeight.toStringAsFixed(0)} lbs'),
+                    _buildHistoryStat('Reps', '${history.lastReps}'),
+                    _buildHistoryStat('Sessions', '${history.sessionCount}'),
+                  ],
+                ),
+                if (history.consecutiveGoalsMet >= 2)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(color: Colors.green.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.trending_up, color: Colors.green, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${history.consecutiveGoalsMet} sessions hitting target - consider increasing weight!',
+                              style: const TextStyle(color: Colors.green, fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Weight progression chart
+        if (chartData.length >= 2) ...[
+          Text('Weight Progress', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade200)),
+          const SizedBox(height: 12),
+          Container(
+            height: 180,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: Colors.grey.shade800.withOpacity(0.5), borderRadius: BorderRadius.circular(12)),
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 20, getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade700, strokeWidth: 1)),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (value, meta) => Text('${value.toInt()}', style: TextStyle(color: Colors.grey.shade500, fontSize: 10)))),
+                  bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, getTitlesWidget: (value, meta) {
+                    final index = value.toInt();
+                    if (index >= 0 && index < workoutDates.length) {
+                      return Padding(padding: const EdgeInsets.only(top: 8), child: Text(workoutDates[index], style: TextStyle(color: Colors.grey.shade500, fontSize: 10)));
+                    }
+                    return const SizedBox.shrink();
+                  })),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+                borderData: FlBorderData(show: false),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: chartData,
+                    isCurved: true,
+                    color: const Color(0xFF6C63FF),
+                    barWidth: 3,
+                    dotData: FlDotData(show: true, getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 4, color: const Color(0xFF6C63FF), strokeWidth: 2, strokeColor: Colors.white)),
+                    belowBarData: BarAreaData(show: true, color: const Color(0xFF6C63FF).withOpacity(0.1)),
+                  ),
+                ],
               ),
             ),
+          ),
+          const SizedBox(height: 16),
         ],
-      ),
+
+        // Recent history (last 3 sessions with full detail)
+        if (exerciseWorkouts.isNotEmpty) ...[
+          Text('Recent History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade200)),
+          const SizedBox(height: 12),
+          ...exerciseWorkouts.take(3).map((workout) {
+            final ex = workout.exercises.firstWhere((e) => e.name == _currentExercise.name);
+            final totalVolume = ex.completedSets.fold<double>(0, (sum, s) => sum + (s.weight * s.reps));
+            final maxWeight = ex.completedSets.isNotEmpty ? ex.completedSets.map((s) => s.weight).reduce((a, b) => a > b ? a : b) : 0.0;
+            final hitTarget = ex.completedSets.isNotEmpty && ex.completedSets.every((s) => s.reps >= _currentExercise.defaultMaxReps);
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade800.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade700),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(child: Text(DateFormat('MMM d, yyyy').format(workout.date), style: const TextStyle(fontWeight: FontWeight.w500))),
+                      const Spacer(),
+                      if (hitTarget)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.green.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.check, color: Colors.green, size: 14),
+                            const SizedBox(width: 4),
+                            const Text('Hit target', style: TextStyle(color: Colors.green, fontSize: 11)),
+                          ]),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: ex.completedSets.map((set) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(8)),
+                        child: Text('${set.weight.toStringAsFixed(0)} lbs \u{00D7} ${set.reps}', style: const TextStyle(fontSize: 12)),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Max: ${maxWeight.toStringAsFixed(0)} lbs \u{2022} Volume: ${totalVolume.toStringAsFixed(0)} lbs', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                ],
+              ),
+            );
+          }),
+        ],
+      ],
     );
   }
 
