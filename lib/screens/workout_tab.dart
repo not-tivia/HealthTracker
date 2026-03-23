@@ -874,7 +874,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
                 stretchName: stretch.name,
               )) {
                 final nameLower = stretch.name.toLowerCase();
-                if (nameLower.contains('warm up') || nameLower.contains('warmup')) {
+                if (nameLower.contains('warm up') || nameLower.contains('warmup') || nameLower.contains('warm-up') || nameLower.contains('pre-workout')) {
                   suggestedStretchId = stretch.id;
                   suggestionText = 'Warm up: ${stretch.name}';
                   break;

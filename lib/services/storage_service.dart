@@ -909,13 +909,29 @@ class StorageService extends ChangeNotifier {
   }
 
   /// Checks if a stretch routine name matches a workout routine name using shared prefix logic.
+  /// Matches workout and stretch names by finding a shared word prefix
+  /// of at least 2 words. E.g., "Full Body Lift and Carry" and
+  /// "Full Body Pre-Workout Warm-up" share "Full Body" (2 words).
   static bool stretchNameMatchesWorkout({
     required String workoutName,
     required String stretchName,
   }) {
-    final workoutLower = workoutName.toLowerCase().trim();
-    final stretchLower = stretchName.toLowerCase().trim();
-    return stretchLower.startsWith(workoutLower);
+    final workoutWords = workoutName.toLowerCase().trim().split(RegExp(r'\s+'));
+    final stretchWords = stretchName.toLowerCase().trim().split(RegExp(r'\s+'));
+
+    // Count shared prefix words
+    int sharedWords = 0;
+    for (int i = 0; i < workoutWords.length && i < stretchWords.length; i++) {
+      if (workoutWords[i] == stretchWords[i]) {
+        sharedWords++;
+      } else {
+        break;
+      }
+    }
+
+    // Require at least 2 shared prefix words (e.g., "Full Body", "Push/Pull")
+    // Exception: if the workout name is only 1 word, allow 1-word match
+    return sharedWords >= 2 || (workoutWords.length == 1 && sharedWords == 1);
   }
 
   /// Finds the best matching warm-down stretch for a workout routine.
@@ -936,7 +952,7 @@ class StorageService extends ChangeNotifier {
     for (final stretch in stretches) {
       if (stretchNameMatchesWorkout(workoutName: workoutRoutine.name, stretchName: stretch.name)) {
         final nameLower = stretch.name.toLowerCase();
-        if (nameLower.contains('warm down') || nameLower.contains('cooldown') || nameLower.contains('cool down')) {
+        if (nameLower.contains('warm down') || nameLower.contains('cooldown') || nameLower.contains('cool down') || nameLower.contains('cool-down') || nameLower.contains('post-workout')) {
           return stretch.id;
         }
       }
