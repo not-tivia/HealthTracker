@@ -377,13 +377,18 @@ class StepTrackingService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Mark today's cardio/step goal as met (manual override).
-  /// One-directional — once set, stays for the day.
-  Future<void> markCardioGoalMet() async {
+  /// Toggle today's cardio/step goal override.
+  /// Tap once to mark met, tap again to undo.
+  Future<void> toggleCardioGoal() async {
     final prefs = await SharedPreferences.getInstance();
     _prefs = prefs;
     final today = _getTodayString();
-    await prefs.setBool('cardio_override_$today', true);
+    final current = prefs.getBool('cardio_override_$today') ?? false;
+    if (current) {
+      await prefs.remove('cardio_override_$today');
+    } else {
+      await prefs.setBool('cardio_override_$today', true);
+    }
     notifyListeners();
   }
 

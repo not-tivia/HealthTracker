@@ -591,12 +591,10 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     Text('This Week',
                         style: TextStyle(color: Colors.grey.shade400, fontSize: 14)),
                     GestureDetector(
-                      onTap: isCardioMet
-                          ? null
-                          : () async {
-                              await stepService.markCardioGoalMet();
-                              setState(() {});
-                            },
+                      onTap: () async {
+                        await stepService.toggleCardioGoal();
+                        setState(() {});
+                      },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
@@ -642,6 +640,10 @@ class _WorkoutTabState extends State<WorkoutTab> {
                         final dayNum = index + 1;
                         final isCompleted = completions[dayNum] ?? false;
                         final isToday = dayNum == today;
+                        // Check if cardio was done this day (but no strength workout)
+                        final dayDate = DateTime.now().subtract(Duration(days: today - dayNum));
+                        final cardioOnly = !isCompleted && isToday && isCardioMet;
+
                         return GestureDetector(
                           onTap: () {
                             showDialog(
@@ -668,14 +670,18 @@ class _WorkoutTabState extends State<WorkoutTab> {
                                   shape: BoxShape.circle,
                                   color: isCompleted
                                       ? AppTheme.primaryColor
-                                      : Colors.grey.shade800,
-                                  border: isToday && !isCompleted
+                                      : cardioOnly
+                                          ? AppTheme.successColor
+                                          : Colors.grey.shade800,
+                                  border: isToday && !isCompleted && !cardioOnly
                                       ? Border.all(color: AppTheme.primaryColor, width: 2)
                                       : null,
                                 ),
                                 child: isCompleted
                                     ? Icon(Icons.check, size: circleSize * 0.55, color: Colors.white)
-                                    : null,
+                                    : cardioOnly
+                                        ? Text('🏃', style: TextStyle(fontSize: circleSize * 0.45))
+                                        : null,
                               ),
                             ],
                           ),
@@ -815,13 +821,23 @@ class _WorkoutTabState extends State<WorkoutTab> {
   Widget _buildStretchCircles(StorageService storage) {
     final recentStretches = _stretchRoutines.take(3).toList();
 
+    // Only suggest a warm-down stretch if a workout was completed TODAY
     String? suggestionText;
-    if (_lastCompletedRoutineId != null) {
-      final warmDownId = storage.findWarmDownStretch(_lastCompletedRoutineId!);
-      if (warmDownId != null) {
-        final stretch = _stretchRoutines.where((s) => s.id == warmDownId).firstOrNull;
-        if (stretch != null) {
-          suggestionText = 'Suggested: ${stretch.name}';
+    if (_workouts.isNotEmpty) {
+      final lastWorkout = _workouts.first;
+      final now = DateTime.now();
+      final isToday = lastWorkout.date.year == now.year &&
+          lastWorkout.date.month == now.month &&
+          lastWorkout.date.day == now.day;
+
+      if (isToday && lastWorkout.routineId != null) {
+        // Suggest warm-down for the workout we just did today
+        final warmDownId = storage.findWarmDownStretch(lastWorkout.routineId!);
+        if (warmDownId != null) {
+          final stretch = _stretchRoutines.where((s) => s.id == warmDownId).firstOrNull;
+          if (stretch != null) {
+            suggestionText = 'Suggested: ${stretch.name}';
+          }
         }
       }
     }
@@ -846,11 +862,13 @@ class _WorkoutTabState extends State<WorkoutTab> {
     );
   }
 
-  void _navigateToSettings() {
-    Navigator.push(
+  void _navigateToSettings() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const SettingsTab()),
     );
+    // Refresh data when returning from settings (rotation may have changed)
+    if (mounted) _loadData();
   }
 
   void _showAllRoutinesSheet() {
