@@ -10,6 +10,8 @@ import '../models/saved_exercise.dart';
 import '../models/workout_routine.dart';
 import '../services/storage_service.dart';
 import '../widgets/rest_timer_widget.dart';
+import '../widgets/post_workout_popup.dart';
+import 'stretch_session_screen.dart';
 
 class WorkoutSessionScreen extends StatefulWidget {
   final String routineName;
@@ -625,9 +627,41 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         ),
         actions: [
           FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
+            onPressed: () async {
+              Navigator.pop(context); // Close completion dialog
+
+              // Check for warm-down stretch suggestion
+              final storage = context.read<StorageService>();
+              String? warmDownStretchId;
+              if (widget.routineId.isNotEmpty) {
+                warmDownStretchId = storage.findWarmDownStretch(widget.routineId);
+              }
+
+              if (warmDownStretchId != null && mounted) {
+                final stretchRoutines = storage.getAllStretchRoutines();
+                final stretchRoutine = stretchRoutines
+                    .where((s) => s.id == warmDownStretchId)
+                    .firstOrNull;
+
+                if (stretchRoutine != null && mounted) {
+                  final wantStretch = await PostWorkoutPopup.show(
+                    context,
+                    stretchName: stretchRoutine.name,
+                  );
+
+                  if (wantStretch && mounted) {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => StretchSessionScreen(routine: stretchRoutine),
+                      ),
+                    );
+                    return;
+                  }
+                }
+              }
+
+              if (mounted) Navigator.pop(context); // Pop workout session screen
             },
             child: const Text('Done'),
           ),
