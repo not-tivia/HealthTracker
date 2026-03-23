@@ -23,6 +23,11 @@ import 'workout_session_screen.dart';
 import '../models/saved_stretch.dart';
 import '../models/stretch_routine.dart';
 import 'stretch_session_screen.dart';
+import '../services/step_tracking_service.dart';
+import '../widgets/stretch_workout_toggle.dart';
+import '../widgets/routine_circles.dart';
+import '../widgets/workout_day_suggestion.dart';
+import '../widgets/daily_history_dialog.dart';
 
 
 /// Unified activity item that can be either a strength workout or cardio
@@ -63,6 +68,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
   // Stretch routine organization
   bool _stretchSectionCollapsed = false;
   List<String> _stretchRoutineOrder = []; // Stored order of routine IDs
+  bool _isStretchSelected = false;
 
   List<Workout> _workouts = [];
   List<WorkoutRoutine> _routines = [];
@@ -258,6 +264,11 @@ class _WorkoutTabState extends State<WorkoutTab> {
     }
   }
 
+  String? get _lastCompletedRoutineId {
+    if (_workouts.isEmpty) return null;
+    return _workouts.first.routineId;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -285,16 +296,31 @@ class _WorkoutTabState extends State<WorkoutTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 8),
+                    // EXISTING: Weekly goal card (unchanged)
                     _buildWeeklyGoalCard(constraints),
-                    const SizedBox(height: 20),
-                    _buildThisWeekCard(),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
+                    // EXISTING + NEW: This week row + cardio button
+                    _buildThisWeekWithCardio(),
+                    const SizedBox(height: 16),
+                    // NEW: "Today is X day" banner
+                    _buildTodaySuggestion(),
+                    const SizedBox(height: 16),
+                    // NEW: Stretch/Workout toggle
+                    StretchWorkoutToggle(
+                      isStretchSelected: _isStretchSelected,
+                      onToggle: (isStretch) => setState(() => _isStretchSelected = isStretch),
+                    ),
+                    const SizedBox(height: 16),
+                    // NEW: Routine circles
+                    _buildRoutineCircles(),
+                    const SizedBox(height: 24),
+                    // EXISTING sections below the fold
                     _buildStartWorkoutButton(),
                     const SizedBox(height: 12),
                     _buildImportExportButtons(),
                     const SizedBox(height: 24),
-                    _buildWarmupStretchesSection(),  
-                    const SizedBox(height: 24),       
+                    _buildWarmupStretchesSection(),
+                    const SizedBox(height: 24),
                     _buildMyRoutinesSection(),
                     const SizedBox(height: 24),
                     _buildMyExercisesSection(),
@@ -494,34 +520,43 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     final dayNum = index + 1;
                     final isCompleted = completions[dayNum] ?? false;
                     final isToday = dayNum == today;
-                    return Column(
-                      children: [
-                        Text(weekdays[index],
-                            style: TextStyle(
-                                color: isToday
-                                    ? AppTheme.primaryColor
-                                    : Colors.grey.shade500,
-                                fontWeight:
-                                    isToday ? FontWeight.bold : FontWeight.normal,
-                                fontSize: 12)),
-                        const SizedBox(height: 8),
-                        Container(
-                          width: circleSize,
-                          height: circleSize,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isCompleted
-                                ? AppTheme.primaryColor
-                                : Colors.grey.shade800,
-                            border: isToday && !isCompleted
-                                ? Border.all(color: AppTheme.primaryColor, width: 2)
+                    return GestureDetector(
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          useSafeArea: false,
+                          builder: (context) => const DailyHistoryDialog(),
+                        );
+                      },
+                      child: Column(
+                        children: [
+                          Text(weekdays[index],
+                              style: TextStyle(
+                                  color: isToday
+                                      ? AppTheme.primaryColor
+                                      : Colors.grey.shade500,
+                                  fontWeight:
+                                      isToday ? FontWeight.bold : FontWeight.normal,
+                                  fontSize: 12)),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: circleSize,
+                            height: circleSize,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isCompleted
+                                  ? AppTheme.primaryColor
+                                  : Colors.grey.shade800,
+                              border: isToday && !isCompleted
+                                  ? Border.all(color: AppTheme.primaryColor, width: 2)
+                                  : null,
+                            ),
+                            child: isCompleted
+                                ? Icon(Icons.check, size: circleSize * 0.55, color: Colors.white)
                                 : null,
                           ),
-                          child: isCompleted
-                              ? Icon(Icons.check, size: circleSize * 0.55, color: Colors.white)
-                              : null,
-                        ),
-                      ],
+                        ],
+                      ),
                     );
                   }),
                 );
@@ -530,6 +565,61 @@ class _WorkoutTabState extends State<WorkoutTab> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildThisWeekWithCardio() {
+    return Consumer<StepTrackingService>(
+      builder: (context, stepService, _) {
+        final isCardioMet = stepService.goalMetForDate(DateTime.now());
+
+        return Column(
+          children: [
+            _buildThisWeekCard(),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: isCardioMet
+                  ? null
+                  : () async {
+                      await stepService.markCardioGoalMet();
+                      setState(() {});
+                    },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isCardioMet
+                      ? AppTheme.successColor.withOpacity(0.15)
+                      : AppTheme.cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isCardioMet ? AppTheme.successColor : AppTheme.cardColorLight,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isCardioMet ? Icons.check_circle : Icons.directions_run,
+                      size: 18,
+                      color: isCardioMet ? AppTheme.successColor : AppTheme.textSecondary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      isCardioMet ? 'Cardio goal met!' : 'Mark cardio completed',
+                      style: TextStyle(
+                        color: isCardioMet ? AppTheme.successColor : AppTheme.textSecondary,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -583,6 +673,146 @@ class _WorkoutTabState extends State<WorkoutTab> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTodaySuggestion() {
+    final storage = context.read<StorageService>();
+    final nextId = storage.getNextInRotation(lastRoutineId: _lastCompletedRoutineId);
+
+    String? routineName;
+    if (nextId != null) {
+      final routine = _routines.where((r) => r.id == nextId).firstOrNull;
+      routineName = routine?.name;
+    }
+
+    return WorkoutDaySuggestion(
+      routineName: routineName,
+      onTap: () {
+        if (nextId != null) {
+          final routine = _routines.where((r) => r.id == nextId).firstOrNull;
+          if (routine != null) _startRoutine(routine);
+        }
+      },
+    );
+  }
+
+  Widget _buildRoutineCircles() {
+    final storage = context.read<StorageService>();
+
+    if (_isStretchSelected) {
+      return _buildStretchCircles(storage);
+    } else {
+      return _buildWorkoutCircles(storage);
+    }
+  }
+
+  Widget _buildWorkoutCircles(StorageService storage) {
+    final circleIds = storage.getRotationCircles(lastRoutineId: _lastCompletedRoutineId);
+    final nextId = storage.getNextInRotation(lastRoutineId: _lastCompletedRoutineId);
+
+    final circles = circleIds.map((id) {
+      final routine = _routines.where((r) => r.id == id).firstOrNull;
+      return RoutineCircle(
+        id: id,
+        name: routine?.name ?? 'Unknown',
+        isHighlighted: id == nextId,
+      );
+    }).toList();
+
+    return RoutineCirclesWidget(
+      circles: circles,
+      onCircleTap: (id) {
+        final routine = _routines.where((r) => r.id == id).firstOrNull;
+        if (routine != null) _startRoutine(routine);
+      },
+      onSeeAll: () => _showAllRoutinesSheet(),
+    );
+  }
+
+  Widget _buildStretchCircles(StorageService storage) {
+    final recentStretches = _stretchRoutines.take(3).toList();
+
+    String? suggestionText;
+    if (_lastCompletedRoutineId != null) {
+      final warmDownId = storage.findWarmDownStretch(_lastCompletedRoutineId!);
+      if (warmDownId != null) {
+        final stretch = _stretchRoutines.where((s) => s.id == warmDownId).firstOrNull;
+        if (stretch != null) {
+          suggestionText = 'Suggested: ${stretch.name}';
+        }
+      }
+    }
+
+    final circles = recentStretches.map((s) => RoutineCircle(
+      id: s.id,
+      name: s.name,
+    )).toList();
+
+    return RoutineCirclesWidget(
+      circles: circles,
+      suggestionText: suggestionText,
+      onCircleTap: (id) {
+        final routine = _stretchRoutines.where((r) => r.id == id).firstOrNull;
+        if (routine != null) {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => StretchSessionScreen(routine: routine),
+          ));
+        }
+      },
+      onSeeAll: () => _showAllStretchRoutinesSheet(),
+    );
+  }
+
+  void _showAllRoutinesSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text('All Workout Routines', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 16),
+          ..._routines.map((r) => ListTile(
+            title: Text(r.name),
+            subtitle: Text('${r.exercises.length} exercises'),
+            onTap: () {
+              Navigator.pop(context);
+              _startRoutine(r);
+            },
+          )),
+        ],
+      ),
+    );
+  }
+
+  void _showAllStretchRoutinesSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text('All Stretch Routines', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 16),
+          ..._stretchRoutines.map((r) => ListTile(
+            title: Text(r.name),
+            subtitle: Text('${r.stretches.length} stretches'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(
+                builder: (_) => StretchSessionScreen(routine: r),
+              ));
+            },
+          )),
+        ],
+      ),
     );
   }
 
