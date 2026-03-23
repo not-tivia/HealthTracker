@@ -674,38 +674,7 @@ class _DailyHistoryDialogState extends State<DailyHistoryDialog> {
         child: Column(
           children: [
             // Strength workouts
-            ...workouts.map((workout) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.fitness_center, color: Colors.green, size: 16),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          workout.name,
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          '${workout.exercises.length} exercises \u{2022} ${workout.durationMinutes} min',
-                          style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            )),
+            ...workouts.map((workout) => _buildWorkoutDetail(workout)),
             // Cardio workouts
             ...cardioWorkouts.map((cardio) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
@@ -744,6 +713,39 @@ class _DailyHistoryDialogState extends State<DailyHistoryDialog> {
       ),
       const SizedBox(height: 16),
     ];
+  }
+
+  Widget _buildWorkoutDetail(Workout workout) {
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      title: Text(workout.name, style: TextStyle(color: AppTheme.textPrimary)),
+      subtitle: Text(
+        '${workout.exercises.length} exercises · ${workout.durationMinutes} min',
+        style: TextStyle(color: AppTheme.textTertiary, fontSize: 12),
+      ),
+      leading: Icon(Icons.fitness_center, color: AppTheme.successColor, size: 20),
+      children: workout.exercises.map((exercise) {
+        return Padding(
+          padding: const EdgeInsets.only(left: 16, bottom: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                exercise.name,
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+              ...exercise.sets.asMap().entries.map((e) => Padding(
+                padding: const EdgeInsets.only(left: 8, top: 2),
+                child: Text(
+                  'Set ${e.key + 1}: ${e.value.reps} reps × ${e.value.weight} lbs',
+                  style: TextStyle(color: AppTheme.textTertiary, fontSize: 12),
+                ),
+              )),
+            ],
+          ),
+        );
+      }).toList(),
+    );
   }
 
   Widget _buildSectionCard({
