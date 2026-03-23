@@ -680,7 +680,11 @@ class _WorkoutTabState extends State<WorkoutTab> {
                                 child: isCompleted
                                     ? Icon(Icons.check, size: circleSize * 0.55, color: Colors.white)
                                     : cardioOnly
-                                        ? Text('🏃', style: TextStyle(fontSize: circleSize * 0.45))
+                                        ? Transform(
+                                            alignment: Alignment.center,
+                                            transform: Matrix4.identity()..scale(-1.0, 1.0),
+                                            child: Text('🏃', style: TextStyle(fontSize: circleSize * 0.45)),
+                                          )
                                         : null,
                               ),
                             ],
@@ -808,6 +812,10 @@ class _WorkoutTabState extends State<WorkoutTab> {
         final routine = _routines.where((r) => r.id == id).firstOrNull;
         if (routine != null) _startRoutine(routine);
       },
+      onCircleLongPress: (id) {
+        final routine = _routines.where((r) => r.id == id).firstOrNull;
+        if (routine != null) _showRoutineOptions(routine);
+      },
       onSeeAll: () {
         if (circles.isEmpty) {
           _navigateToSettings();
@@ -908,6 +916,10 @@ class _WorkoutTabState extends State<WorkoutTab> {
           ));
         }
       },
+      onCircleLongPress: (id) {
+        final routine = _stretchRoutines.where((r) => r.id == id).firstOrNull;
+        if (routine != null) _showStretchRoutineOptions(routine);
+      },
       onSeeAll: () => _showAllStretchRoutinesSheet(),
     );
   }
@@ -940,6 +952,10 @@ class _WorkoutTabState extends State<WorkoutTab> {
               Navigator.pop(context);
               _startRoutine(r);
             },
+            onLongPress: () {
+              Navigator.pop(context);
+              _showRoutineOptions(r);
+            },
           )),
         ],
       ),
@@ -966,6 +982,10 @@ class _WorkoutTabState extends State<WorkoutTab> {
               Navigator.push(context, MaterialPageRoute(
                 builder: (_) => StretchSessionScreen(routine: r),
               ));
+            },
+            onLongPress: () {
+              Navigator.pop(context);
+              _showStretchRoutineOptions(r);
             },
           )),
         ],

@@ -16,6 +16,7 @@ class RoutineCircle {
 class RoutineCirclesWidget extends StatelessWidget {
   final List<RoutineCircle> circles;
   final ValueChanged<String> onCircleTap;
+  final ValueChanged<String>? onCircleLongPress;
   final VoidCallback onSeeAll;
   final String? suggestionText;
 
@@ -23,6 +24,7 @@ class RoutineCirclesWidget extends StatelessWidget {
     super.key,
     required this.circles,
     required this.onCircleTap,
+    this.onCircleLongPress,
     required this.onSeeAll,
     this.suggestionText,
   });
@@ -85,6 +87,7 @@ class RoutineCirclesWidget extends StatelessWidget {
   Widget _buildCircle(BuildContext context, RoutineCircle circle) {
     return GestureDetector(
       onTap: () => onCircleTap(circle.id),
+      onLongPress: onCircleLongPress != null ? () => onCircleLongPress!(circle.id) : null,
       child: Column(
         children: [
           Container(
