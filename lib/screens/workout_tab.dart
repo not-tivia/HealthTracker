@@ -28,6 +28,7 @@ import '../widgets/stretch_workout_toggle.dart';
 import '../widgets/routine_circles.dart';
 import '../widgets/workout_day_suggestion.dart';
 import '../widgets/daily_history_dialog.dart';
+import 'settings_tab.dart';
 
 
 /// Unified activity item that can be either a strength workout or cardio
@@ -573,51 +574,119 @@ class _WorkoutTabState extends State<WorkoutTab> {
       builder: (context, stepService, _) {
         final isCardioMet = stepService.goalMetForDate(DateTime.now());
 
-        return Column(
-          children: [
-            _buildThisWeekCard(),
-            const SizedBox(height: 8),
-            GestureDetector(
-              onTap: isCardioMet
-                  ? null
-                  : () async {
-                      await stepService.markCardioGoalMet();
-                      setState(() {});
-                    },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isCardioMet
-                      ? AppTheme.successColor.withOpacity(0.15)
-                      : AppTheme.cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isCardioMet ? AppTheme.successColor : AppTheme.cardColorLight,
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+        // Rebuild the This Week card with an inline cardio button in the header
+        final weekdays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+        final completions = _weekdayCompletions;
+        final today = DateTime.now().weekday;
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Icon(
-                      isCardioMet ? Icons.check_circle : Icons.directions_run,
-                      size: 18,
-                      color: isCardioMet ? AppTheme.successColor : AppTheme.textSecondary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      isCardioMet ? 'Cardio goal met!' : 'Mark cardio completed',
-                      style: TextStyle(
-                        color: isCardioMet ? AppTheme.successColor : AppTheme.textSecondary,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 13,
+                    Text('This Week',
+                        style: TextStyle(color: Colors.grey.shade400, fontSize: 14)),
+                    GestureDetector(
+                      onTap: isCardioMet
+                          ? null
+                          : () async {
+                              await stepService.markCardioGoalMet();
+                              setState(() {});
+                            },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isCardioMet
+                              ? AppTheme.successColor.withOpacity(0.15)
+                              : AppTheme.cardColor,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isCardioMet ? AppTheme.successColor : AppTheme.cardColorLight,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              isCardioMet ? '✅' : '🏃',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isCardioMet ? 'Done' : 'Cardio',
+                              style: TextStyle(
+                                color: isCardioMet ? AppTheme.successColor : AppTheme.textSecondary,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
+                const SizedBox(height: 12),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final itemWidth = (constraints.maxWidth - 48) / 7;
+                    final circleSize = itemWidth.clamp(28.0, 36.0);
+
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: List.generate(7, (index) {
+                        final dayNum = index + 1;
+                        final isCompleted = completions[dayNum] ?? false;
+                        final isToday = dayNum == today;
+                        return GestureDetector(
+                          onTap: () {
+                            showDialog(
+                              context: context,
+                              useSafeArea: false,
+                              builder: (context) => const DailyHistoryDialog(),
+                            );
+                          },
+                          child: Column(
+                            children: [
+                              Text(weekdays[index],
+                                  style: TextStyle(
+                                      color: isToday
+                                          ? AppTheme.primaryColor
+                                          : Colors.grey.shade500,
+                                      fontWeight:
+                                          isToday ? FontWeight.bold : FontWeight.normal,
+                                      fontSize: 12)),
+                              const SizedBox(height: 8),
+                              Container(
+                                width: circleSize,
+                                height: circleSize,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: isCompleted
+                                      ? AppTheme.primaryColor
+                                      : Colors.grey.shade800,
+                                  border: isToday && !isCompleted
+                                      ? Border.all(color: AppTheme.primaryColor, width: 2)
+                                      : null,
+                                ),
+                                child: isCompleted
+                                    ? Icon(Icons.check, size: circleSize * 0.55, color: Colors.white)
+                                    : null,
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    );
+                  },
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -692,6 +761,13 @@ class _WorkoutTabState extends State<WorkoutTab> {
         if (nextId != null) {
           final routine = _routines.where((r) => r.id == nextId).firstOrNull;
           if (routine != null) _startRoutine(routine);
+        } else {
+          // No rotation configured — navigate to Settings tab (index 4)
+          final homeState = context.findAncestorStateOfType<State>();
+          if (homeState != null && homeState.mounted) {
+            // Find the HomeScreen's state and switch to Settings tab
+            _navigateToSettings();
+          }
         }
       },
     );
@@ -726,7 +802,13 @@ class _WorkoutTabState extends State<WorkoutTab> {
         final routine = _routines.where((r) => r.id == id).firstOrNull;
         if (routine != null) _startRoutine(routine);
       },
-      onSeeAll: () => _showAllRoutinesSheet(),
+      onSeeAll: () {
+        if (circles.isEmpty) {
+          _navigateToSettings();
+        } else {
+          _showAllRoutinesSheet();
+        }
+      },
     );
   }
 
@@ -761,6 +843,13 @@ class _WorkoutTabState extends State<WorkoutTab> {
         }
       },
       onSeeAll: () => _showAllStretchRoutinesSheet(),
+    );
+  }
+
+  void _navigateToSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsTab()),
     );
   }
 
