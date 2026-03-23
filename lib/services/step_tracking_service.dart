@@ -26,6 +26,7 @@ class StepTrackingService extends ChangeNotifier {
   StreamSubscription<StepCount>? _stepSubscription;
   StreamSubscription<PedestrianStatus>? _pedestrianSubscription;
   Timer? _midnightTimer;
+  SharedPreferences? _prefs;
   
   /// Total displayed steps (pedometer + manual cardio)
   int get todaySteps => _pedometerSteps + _manualSteps;
@@ -53,6 +54,7 @@ class StepTrackingService extends ChangeNotifier {
       startTracking();
     }
     _scheduleMidnightReset();
+    await pruneOldCardioOverrides();
   }
 
   /// Schedule a timer to reset steps at midnight
@@ -103,6 +105,7 @@ class StepTrackingService extends ChangeNotifier {
   Future<void> _loadSavedData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      _prefs = prefs;
       final savedDate = prefs.getString('step_date');
       final today = _getTodayString();
       
@@ -174,7 +177,9 @@ class StepTrackingService extends ChangeNotifier {
   }
 
   /// Check if step goal was met for a specific date
-  bool goalMetForDate(DateTime date) => getStepsForDate(date) >= _stepGoal;
+  bool goalMetForDate(DateTime date) {
+    return getStepsForDate(date) >= _stepGoal || isCardioGoalOverridden(date);
+  }
 
   /// Get weekly goal completion status (Mon-Sun)
   List<bool> getWeeklyGoalStatus() {
@@ -370,6 +375,48 @@ class StepTrackingService extends ChangeNotifier {
     if (!_hasPermission) await requestPermission();
     if (!_isTracking && _hasPermission) startTracking();
     notifyListeners();
+  }
+
+  /// Mark today's cardio/step goal as met (manual override).
+  /// One-directional — once set, stays for the day.
+  Future<void> markCardioGoalMet() async {
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    final today = _getTodayString();
+    await prefs.setBool('cardio_override_$today', true);
+    notifyListeners();
+  }
+
+  /// Check if a specific date has a cardio goal override.
+  /// Uses the cached SharedPreferences reference for synchronous access.
+  bool isCardioGoalOverridden(DateTime date) {
+    if (_prefs == null) return false;
+    final dateStr = _getDateString(date);
+    return _prefs!.getBool('cardio_override_$dateStr') ?? false;
+  }
+
+  /// Prune cardio override entries older than 14 days.
+  Future<void> pruneOldCardioOverrides() async {
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    final cutoff = DateTime.now().subtract(const Duration(days: 14));
+    final keysToRemove = prefs.getKeys()
+        .where((k) => k.startsWith('cardio_override_'))
+        .where((k) {
+      final dateStr = k.replaceFirst('cardio_override_', '');
+      final parts = dateStr.split('-');
+      if (parts.length != 3) return true;
+      try {
+        final date = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+        return date.isBefore(cutoff);
+      } catch (_) {
+        return true;
+      }
+    }).toList();
+
+    for (final key in keysToRemove) {
+      await prefs.remove(key);
+    }
   }
 
   @override
