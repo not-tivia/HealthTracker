@@ -20,6 +20,7 @@ import '../models/food_library_item.dart';
 // NEW: Import stretch models
 import '../models/saved_stretch.dart';
 import '../models/stretch_routine.dart';
+import '../models/default_exercises.dart';
 
 class StorageService extends ChangeNotifier {
   late Box<Workout> _workoutsBox;
@@ -84,8 +85,23 @@ class StorageService extends ChangeNotifier {
       }
     }
 
+    // Seed default exercises — only adds ones that don't already exist by name
+    await _seedDefaultExercises();
+
     _isInitialized = true;
     notifyListeners();
+  }
+
+  Future<void> _seedDefaultExercises() async {
+    final existingNames = _savedExercisesBox.values
+        .map((e) => e.name.toLowerCase())
+        .toSet();
+
+    for (final exercise in DefaultExercises.all) {
+      if (!existingNames.contains(exercise.name.toLowerCase())) {
+        await _savedExercisesBox.put(exercise.id, exercise);
+      }
+    }
   }
 
   // ============ USER SETTINGS ============
