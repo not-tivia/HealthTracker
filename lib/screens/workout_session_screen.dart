@@ -777,10 +777,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         actions: [
           FilledButton(
             onPressed: () async {
+              // Capture the outer navigator context before popping
+              final outerContext = this.context;
               Navigator.pop(context); // Close completion dialog
 
               // Check for warm-down stretch suggestion
-              final storage = context.read<StorageService>();
+              final storage = outerContext.read<StorageService>();
               String? warmDownStretchId;
               if (widget.routineId.isNotEmpty) {
                 warmDownStretchId = storage.findWarmDownStretch(widget.routineId);
@@ -794,13 +796,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
                 if (stretchRoutine != null && mounted) {
                   final wantStretch = await PostWorkoutPopup.show(
-                    context,
+                    outerContext,
                     stretchName: stretchRoutine.name,
                   );
 
                   if (wantStretch && mounted) {
                     Navigator.pushReplacement(
-                      context,
+                      outerContext,
                       MaterialPageRoute(
                         builder: (_) => StretchSessionScreen(routine: stretchRoutine),
                       ),
@@ -810,7 +812,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 }
               }
 
-              if (mounted) Navigator.pop(context); // Pop workout session screen
+              // Always pop back to workout tab (whether skip or no stretch found)
+              if (mounted) Navigator.pop(outerContext);
             },
             child: const Text('Done'),
           ),

@@ -3,28 +3,35 @@ import '../theme/app_theme.dart';
 
 class WorkoutDaySuggestion extends StatelessWidget {
   final String? routineName;
+  final bool completedToday;
   final VoidCallback onTap;
 
   const WorkoutDaySuggestion({
     super.key,
     required this.routineName,
+    this.completedToday = false,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: completedToday ? null : onTap,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           gradient: routineName != null
               ? LinearGradient(
-                  colors: [
-                    AppTheme.primaryColor.withOpacity(0.2),
-                    AppTheme.secondaryColor.withOpacity(0.1),
-                  ],
+                  colors: completedToday
+                      ? [
+                          AppTheme.successColor.withOpacity(0.2),
+                          AppTheme.successColor.withOpacity(0.1),
+                        ]
+                      : [
+                          AppTheme.primaryColor.withOpacity(0.2),
+                          AppTheme.secondaryColor.withOpacity(0.1),
+                        ],
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                 )
@@ -35,32 +42,43 @@ class WorkoutDaySuggestion extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              routineName != null ? Icons.play_circle_fill : Icons.settings,
-              color: routineName != null
-                  ? AppTheme.primaryColor
-                  : AppTheme.textTertiary,
+              completedToday
+                  ? Icons.check_circle
+                  : routineName != null
+                      ? Icons.play_circle_fill
+                      : Icons.settings,
+              color: completedToday
+                  ? AppTheme.successColor
+                  : routineName != null
+                      ? AppTheme.primaryColor
+                      : AppTheme.textTertiary,
               size: 20,
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                routineName != null
-                    ? 'Today is $routineName day'
-                    : 'Set up your workout rotation',
+                completedToday
+                    ? 'Today was $routineName day'
+                    : routineName != null
+                        ? 'Today is $routineName day'
+                        : 'Set up your workout rotation',
                 style: TextStyle(
-                  color: routineName != null
-                      ? AppTheme.textPrimary
-                      : AppTheme.textSecondary,
+                  color: completedToday
+                      ? AppTheme.successColor
+                      : routineName != null
+                          ? AppTheme.textPrimary
+                          : AppTheme.textSecondary,
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
                 ),
               ),
             ),
-            Icon(
-              Icons.chevron_right,
-              color: AppTheme.textTertiary,
-              size: 20,
-            ),
+            if (!completedToday)
+              Icon(
+                Icons.chevron_right,
+                color: AppTheme.textTertiary,
+                size: 20,
+              ),
           ],
         ),
       ),

@@ -270,6 +270,15 @@ class _WorkoutTabState extends State<WorkoutTab> {
     return _workouts.first.routineId;
   }
 
+  bool get _didWorkoutToday {
+    if (_workouts.isEmpty) return false;
+    final last = _workouts.first;
+    final now = DateTime.now();
+    return last.date.year == now.year &&
+        last.date.month == now.month &&
+        last.date.day == now.day;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -757,6 +766,24 @@ class _WorkoutTabState extends State<WorkoutTab> {
 
   Widget _buildTodaySuggestion() {
     final storage = context.read<StorageService>();
+
+    if (_didWorkoutToday) {
+      // Already did a workout today — show what we did
+      final todayRoutineId = _workouts.first.routineId;
+      String? todayRoutineName;
+      if (todayRoutineId != null) {
+        final routine = _routines.where((r) => r.id == todayRoutineId).firstOrNull;
+        todayRoutineName = routine?.name;
+      }
+      todayRoutineName ??= _workouts.first.name;
+
+      return WorkoutDaySuggestion(
+        routineName: todayRoutineName,
+        completedToday: true,
+        onTap: () {}, // No action — already done
+      );
+    }
+
     final nextId = storage.getNextInRotation(lastRoutineId: _lastCompletedRoutineId);
 
     String? routineName;
@@ -772,12 +799,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
           final routine = _routines.where((r) => r.id == nextId).firstOrNull;
           if (routine != null) _startRoutine(routine);
         } else {
-          // No rotation configured — navigate to Settings tab (index 4)
-          final homeState = context.findAncestorStateOfType<State>();
-          if (homeState != null && homeState.mounted) {
-            // Find the HomeScreen's state and switch to Settings tab
-            _navigateToSettings();
-          }
+          _navigateToSettings();
         }
       },
     );
@@ -802,7 +824,8 @@ class _WorkoutTabState extends State<WorkoutTab> {
       return RoutineCircle(
         id: id,
         name: routine?.name ?? 'Unknown',
-        isHighlighted: id == nextId,
+        // Don't highlight any circle if workout already done today
+        isHighlighted: !_didWorkoutToday && id == nextId,
       );
     }).toList();
 
@@ -827,33 +850,29 @@ class _WorkoutTabState extends State<WorkoutTab> {
   }
 
   Widget _buildStretchCircles(StorageService storage) {
-    // Determine the suggested stretch ID and label
     String? suggestedStretchId;
     String? suggestionText;
-    bool didWorkoutToday = false;
 
-    if (_workouts.isNotEmpty) {
-      final lastWorkout = _workouts.first;
-      final now = DateTime.now();
-      didWorkoutToday = lastWorkout.date.year == now.year &&
-          lastWorkout.date.month == now.month &&
-          lastWorkout.date.day == now.day;
+    // Find the relevant workout routine ID for matching
+    String? relevantRoutineId;
 
-      if (didWorkoutToday && lastWorkout.routineId != null) {
-        final warmDownId = storage.findWarmDownStretch(lastWorkout.routineId!);
+    if (_didWorkoutToday) {
+      // Workout done today — suggest cool-down for what we just did
+      relevantRoutineId = _workouts.first.routineId;
+      if (relevantRoutineId != null) {
+        final warmDownId = storage.findWarmDownStretch(relevantRoutineId);
         if (warmDownId != null) {
           final stretch = _stretchRoutines.where((s) => s.id == warmDownId).firstOrNull;
           if (stretch != null) {
             suggestedStretchId = stretch.id;
-            suggestionText = 'Suggested: ${stretch.name}';
+            suggestionText = 'Cool down: ${stretch.name}';
           }
         }
       }
-    }
-
-    // No workout today — suggest warm-up for the next scheduled workout
-    if (!didWorkoutToday) {
+    } else {
+      // No workout today — suggest warm-up for the next scheduled workout
       final nextId = storage.getNextInRotation(lastRoutineId: _lastCompletedRoutineId);
+      relevantRoutineId = nextId;
       if (nextId != null) {
         // Check explicit warm-up pairing first
         final pairing = storage.getStretchPairing(nextId);
@@ -886,20 +905,45 @@ class _WorkoutTabState extends State<WorkoutTab> {
       }
     }
 
-    // Build circles from recent stretches, highlighting the suggested one
-    final recentStretches = _stretchRoutines.take(3).toList();
+    // Build circles: prioritize matching stretches for the relevant workout
+    final circleStretches = <dynamic>[];
 
-    // If the suggested stretch isn't in the recent 3, insert it at the front
-    if (suggestedStretchId != null &&
-        !recentStretches.any((s) => s.id == suggestedStretchId)) {
-      final suggested = _stretchRoutines.where((s) => s.id == suggestedStretchId).firstOrNull;
-      if (suggested != null) {
-        recentStretches.insert(0, suggested);
-        if (recentStretches.length > 3) recentStretches.removeLast();
+    // First, find all stretches matching the relevant workout
+    if (relevantRoutineId != null) {
+      final routine = _routines.where((r) => r.id == relevantRoutineId).firstOrNull;
+      if (routine != null) {
+        for (final stretch in _stretchRoutines) {
+          if (StorageService.stretchNameMatchesWorkout(
+            workoutName: routine.name,
+            stretchName: stretch.name,
+          )) {
+            if (!_didWorkoutToday) {
+              // Before workout — prioritize warm-ups
+              final nameLower = stretch.name.toLowerCase();
+              if (nameLower.contains('warm up') || nameLower.contains('warmup') || nameLower.contains('warm-up') || nameLower.contains('pre-workout')) {
+                circleStretches.add(stretch);
+              }
+            } else {
+              // After workout — prioritize cool-downs
+              final nameLower = stretch.name.toLowerCase();
+              if (nameLower.contains('warm down') || nameLower.contains('cooldown') || nameLower.contains('cool down') || nameLower.contains('cool-down') || nameLower.contains('post-workout')) {
+                circleStretches.add(stretch);
+              }
+            }
+          }
+        }
       }
     }
 
-    final circles = recentStretches.map((s) => RoutineCircle(
+    // Fill remaining slots with recent stretches
+    for (final stretch in _stretchRoutines) {
+      if (circleStretches.length >= 3) break;
+      if (!circleStretches.any((s) => s.id == stretch.id)) {
+        circleStretches.add(stretch);
+      }
+    }
+
+    final circles = circleStretches.take(3).map((s) => RoutineCircle(
       id: s.id,
       name: s.name,
       isHighlighted: s.id == suggestedStretchId,
