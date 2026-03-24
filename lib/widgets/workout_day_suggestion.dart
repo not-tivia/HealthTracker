@@ -13,6 +13,11 @@ class WorkoutDaySuggestion extends StatelessWidget {
     required this.onTap,
   });
 
+  static String _withDay(String name) {
+    if (name.toLowerCase().endsWith('day')) return name;
+    return '$name day';
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -58,9 +63,9 @@ class WorkoutDaySuggestion extends StatelessWidget {
             Expanded(
               child: Text(
                 completedToday
-                    ? 'Today was $routineName day'
+                    ? 'Today was ${_withDay(routineName!)}'
                     : routineName != null
-                        ? 'Today is $routineName day'
+                        ? 'Today is ${_withDay(routineName!)}'
                         : 'Set up your workout rotation',
                 style: TextStyle(
                   color: completedToday
