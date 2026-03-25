@@ -29,6 +29,7 @@ import '../widgets/routine_circles.dart';
 import '../widgets/workout_day_suggestion.dart';
 import '../widgets/daily_history_dialog.dart';
 import 'settings_tab.dart';
+import 'library_screen.dart';
 
 
 /// Unified activity item that can be either a strength workout or cardio
@@ -356,12 +357,12 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     _buildCreateNewButton(),
                     const SizedBox(height: 12),
                     _buildImportExportButtons(),
+                    const SizedBox(height: 12),
+                    _buildMyLibraryButton(),
                     const SizedBox(height: 24),
                     _buildWarmupStretchesSection(),
                     const SizedBox(height: 24),
                     _buildMyRoutinesSection(),
-                    const SizedBox(height: 24),
-                    _buildMyExercisesSection(),
                     const SizedBox(height: 24),
                     _buildRecentActivitiesSection(),
                     const SizedBox(height: 100),
@@ -752,6 +753,101 @@ class _WorkoutTabState extends State<WorkoutTab> {
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMyLibraryButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => _openLibrary(),
+        icon: const Icon(Icons.library_books, size: 20),
+        label: Text('My Library (${_exercises.length} exercises, ${_stretches.length} stretches)',
+            style: const TextStyle(fontSize: 14)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppTheme.primaryColor,
+          side: BorderSide(color: AppTheme.primaryColor.withOpacity(0.5)),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+    );
+  }
+
+  void _openLibrary({int initialTab = 0}) async {
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(builder: (_) => LibraryScreen(initialTab: initialTab)),
+    );
+
+    // Refresh data in case anything was modified
+    _loadData();
+
+    // Handle return actions from library
+    if (result != null && mounted) {
+      final type = result['type'] as String;
+      if (type == 'exercise_tap') {
+        _showExerciseDetails(result['exercise'] as SavedExercise);
+      } else if (type == 'exercise_long_press') {
+        _showExerciseOptions(result['exercise'] as SavedExercise);
+      } else if (type == 'stretch_tap') {
+        // Show stretch details or start stretch
+        final stretch = result['stretch'] as SavedStretch;
+        _showStretchOptions(stretch);
+      } else if (type == 'stretch_long_press') {
+        final stretch = result['stretch'] as SavedStretch;
+        _showStretchOptions(stretch);
+      }
+    }
+  }
+
+  void _showStretchOptions(SavedStretch stretch) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('Edit Stretch'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showCreateStretchDialog(existingStretch: stretch);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.delete, color: Colors.red.shade400),
+                title: Text('Delete', style: TextStyle(color: Colors.red.shade400)),
+                onTap: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Delete Stretch?'),
+                      content: Text('This will remove "${stretch.name}" from your library.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                        FilledButton(onPressed: () => Navigator.pop(context, true), style: FilledButton.styleFrom(backgroundColor: Colors.red.shade400), child: const Text('Delete')),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    Navigator.pop(context);
+                    await context.read<StorageService>().deleteSavedStretch(stretch.id);
+                    _loadData();
+                  }
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
