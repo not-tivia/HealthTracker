@@ -354,6 +354,8 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     const SizedBox(height: 24),
                     // Create / manage actions
                     _buildCreateNewButton(),
+                    const SizedBox(height: 12),
+                    _buildImportExportButtons(),
                     const SizedBox(height: 24),
                     _buildWarmupStretchesSection(),
                     const SizedBox(height: 24),
@@ -817,30 +819,6 @@ class _WorkoutTabState extends State<WorkoutTab> {
                 onTap: () {
                   Navigator.pop(context);
                   _showCreateStretchDialog();
-                },
-              ),
-              const SizedBox(height: 16),
-              Text('Import / Export', style: TextStyle(color: Colors.grey.shade400, fontSize: 13, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              _buildOptionTile(
-                icon: Icons.download,
-                color: AppTheme.warningColor,
-                title: 'Import Routine',
-                subtitle: 'Import from a shared file',
-                onTap: () {
-                  Navigator.pop(context);
-                  _showImportDialog();
-                },
-              ),
-              const SizedBox(height: 8),
-              _buildOptionTile(
-                icon: Icons.upload,
-                color: AppTheme.warningColor,
-                title: 'Export Routine',
-                subtitle: 'Share a routine with others',
-                onTap: () {
-                  Navigator.pop(context);
-                  _showExportDialog();
                 },
               ),
               const SizedBox(height: 16),
