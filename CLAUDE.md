@@ -59,7 +59,14 @@ flutter pub run build_runner build --delete-conflicting-outputs  # Regenerate .g
 UI redesign and internal refinements. The core functionality is working — changes should preserve existing data models and storage compatibility.
 
 ## Guidelines
-- Dark theme only (AppTheme.darkTheme) — all UI should use AppTheme color constants
+- Dark theme only (AppTheme.darkTheme) - all UI should use AppTheme color constants
 - Keep Hive data model changes backward-compatible to avoid breaking existing user data
-- Use Provider for state management — don't introduce additional state management solutions
+- Use Provider for state management - don't introduce additional state management solutions
 - Target Android only for now
+- **NEVER use non-ASCII characters in Dart files.** Use `\u{XXXX}` unicode escapes for special characters:
+  - Bullet/dot: `\u{2022}` (not `·`)
+  - Multiply sign: `\u{00D7}` (not `×`)
+  - Em-dash: use `-` or `--` (not `—`)
+  - Smart quotes: use `'` and `"` (not curly quotes)
+  - Emoji in string literals are OK (Flutter handles them)
+- A pre-commit hook in `.git/hooks/pre-commit` blocks commits with corrupted UTF-8 encoding
