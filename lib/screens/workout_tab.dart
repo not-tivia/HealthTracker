@@ -217,26 +217,42 @@ class _WorkoutTabState extends State<WorkoutTab> {
   }
 
   /// Weekly workout count - only strength workouts, NOT cardio
+  /// Weekly workout count - strength workouts + cardio rest days
   int get _weeklyWorkoutCount {
     final now = DateTime.now();
     final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-    final startDate =
-        DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
-    return _workouts.where((w) => w.date.isAfter(startDate)).length;
+    final startDate = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
+    final stepService = context.read<StepTrackingService>();
+
+    int count = 0;
+    for (int i = 0; i < 7; i++) {
+      final day = startDate.add(Duration(days: i));
+      if (day.isAfter(now)) break;
+      final hasWorkout = _workouts.any((w) =>
+          w.date.year == day.year &&
+          w.date.month == day.month &&
+          w.date.day == day.day);
+      final hasCardio = stepService.isCardioGoalOverridden(day);
+      if (hasWorkout || hasCardio) count++;
+    }
+    return count;
   }
 
-  /// Weekday completions - only strength workouts, NOT cardio
+  /// Weekday completions - strength workouts AND cardio rest days
   Map<int, bool> get _weekdayCompletions {
     final now = DateTime.now();
     final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+    final stepService = context.read<StepTrackingService>();
     final completions = <int, bool>{};
     for (int i = 1; i <= 7; i++) {
       final day = DateTime(
           startOfWeek.year, startOfWeek.month, startOfWeek.day + i - 1);
-      completions[i] = _workouts.any((w) =>
+      final hasWorkout = _workouts.any((w) =>
           w.date.year == day.year &&
           w.date.month == day.month &&
           w.date.day == day.day);
+      final hasCardio = stepService.isCardioGoalOverridden(day);
+      completions[i] = hasWorkout || hasCardio;
     }
     return completions;
   }
@@ -270,7 +286,19 @@ class _WorkoutTabState extends State<WorkoutTab> {
     return _workouts.first.routineId;
   }
 
+  /// Whether any workout (strength or cardio) was done today
   bool get _didWorkoutToday {
+    final now = DateTime.now();
+    final hasStrength = _workouts.isNotEmpty &&
+        _workouts.first.date.year == now.year &&
+        _workouts.first.date.month == now.month &&
+        _workouts.first.date.day == now.day;
+    final hasCardio = context.read<StepTrackingService>().isCardioGoalOverridden(now);
+    return hasStrength || hasCardio;
+  }
+
+  /// Whether a STRENGTH workout (not just cardio) was done today
+  bool get _didStrengthWorkoutToday {
     if (_workouts.isEmpty) return false;
     final last = _workouts.first;
     final now = DateTime.now();
@@ -767,8 +795,8 @@ class _WorkoutTabState extends State<WorkoutTab> {
   Widget _buildTodaySuggestion() {
     final storage = context.read<StorageService>();
 
-    if (_didWorkoutToday) {
-      // Already did a workout today - show what we did
+    if (_didStrengthWorkoutToday) {
+      // Did a strength workout today - show what we did
       final todayRoutineId = _workouts.first.routineId;
       String? todayRoutineName;
       if (todayRoutineId != null) {
@@ -781,6 +809,15 @@ class _WorkoutTabState extends State<WorkoutTab> {
         routineName: todayRoutineName,
         completedToday: true,
         onTap: () {}, // No action - already done
+      );
+    }
+
+    if (_didWorkoutToday && !_didStrengthWorkoutToday) {
+      // Cardio rest day - marked cardio done but no strength workout
+      return WorkoutDaySuggestion(
+        routineName: 'Cardio Rest',
+        completedToday: true,
+        onTap: () {}, // No action - rest day done
       );
     }
 
@@ -856,8 +893,8 @@ class _WorkoutTabState extends State<WorkoutTab> {
     // Find the relevant workout routine ID for matching
     String? relevantRoutineId;
 
-    if (_didWorkoutToday) {
-      // Workout done today - suggest cool-down for what we just did
+    if (_didStrengthWorkoutToday) {
+      // Strength workout done today - suggest cool-down for what we just did
       relevantRoutineId = _workouts.first.routineId;
       if (relevantRoutineId != null) {
         final warmDownId = storage.findWarmDownStretch(relevantRoutineId);
@@ -917,7 +954,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
             workoutName: routine.name,
             stretchName: stretch.name,
           )) {
-            if (!_didWorkoutToday) {
+            if (!_didStrengthWorkoutToday) {
               // Before workout - prioritize warm-ups
               final nameLower = stretch.name.toLowerCase();
               if (nameLower.contains('warm up') || nameLower.contains('warmup') || nameLower.contains('warm-up') || nameLower.contains('pre-workout')) {
