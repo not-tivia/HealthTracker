@@ -352,10 +352,8 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     // NEW: Routine circles
                     _buildRoutineCircles(),
                     const SizedBox(height: 24),
-                    // EXISTING sections below the fold
-                    _buildStartWorkoutButton(),
-                    const SizedBox(height: 12),
-                    _buildImportExportButtons(),
+                    // Create / manage actions
+                    _buildCreateNewButton(),
                     const SizedBox(height: 24),
                     _buildWarmupStretchesSection(),
                     const SizedBox(height: 24),
@@ -736,6 +734,133 @@ class _WorkoutTabState extends State<WorkoutTab> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildCreateNewButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _showCreateNewOptions,
+        icon: const Icon(Icons.add, size: 24),
+        label: const Text('Create New',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.primaryColor,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+    );
+  }
+
+  void _showCreateNewOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceColor,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Create New',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              Text('Workouts', style: TextStyle(color: Colors.grey.shade400, fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              _buildOptionTile(
+                icon: Icons.folder_special,
+                color: AppTheme.secondaryColor,
+                title: 'New Workout Routine',
+                subtitle: 'Group exercises into a workout plan',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showCreateRoutineDialog();
+                },
+              ),
+              const SizedBox(height: 8),
+              _buildOptionTile(
+                icon: Icons.fitness_center,
+                color: AppTheme.successColor,
+                title: 'New Exercise',
+                subtitle: 'Add a new exercise to your library',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showCreateExerciseDialog();
+                },
+              ),
+              const SizedBox(height: 16),
+              Text('Stretches', style: TextStyle(color: Colors.grey.shade400, fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              _buildOptionTile(
+                icon: Icons.self_improvement,
+                color: Colors.teal,
+                title: 'New Stretch Routine',
+                subtitle: 'Group stretches into a warm-up or cool-down',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showCreateStretchRoutineDialog();
+                },
+              ),
+              const SizedBox(height: 8),
+              _buildOptionTile(
+                icon: Icons.accessibility_new,
+                color: Colors.teal.shade300,
+                title: 'New Stretch',
+                subtitle: 'Add a new stretch to your library',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showCreateStretchDialog();
+                },
+              ),
+              const SizedBox(height: 16),
+              Text('Import / Export', style: TextStyle(color: Colors.grey.shade400, fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              _buildOptionTile(
+                icon: Icons.download,
+                color: AppTheme.warningColor,
+                title: 'Import Routine',
+                subtitle: 'Import from a shared file',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showImportDialog();
+                },
+              ),
+              const SizedBox(height: 8),
+              _buildOptionTile(
+                icon: Icons.upload,
+                color: AppTheme.warningColor,
+                title: 'Export Routine',
+                subtitle: 'Share a routine with others',
+                onTap: () {
+                  Navigator.pop(context);
+                  _showExportDialog();
+                },
+              ),
+              const SizedBox(height: 16),
+              Text('Logging', style: TextStyle(color: Colors.grey.shade400, fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              _buildOptionTile(
+                icon: Icons.directions_run,
+                color: AppTheme.accentColor,
+                title: 'Log Cardio',
+                subtitle: 'Running, cycling, treadmill & more',
+                onTap: () {
+                  Navigator.pop(context);
+                  showCardioTrackingDialog(context).then((_) => _loadData());
+                },
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
