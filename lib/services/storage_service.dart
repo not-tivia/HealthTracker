@@ -937,17 +937,24 @@ class StorageService extends ChangeNotifier {
 
     // Count shared prefix words
     int sharedWords = 0;
+    bool hasCompoundWord = false;
     for (int i = 0; i < workoutWords.length && i < stretchWords.length; i++) {
       if (workoutWords[i] == stretchWords[i]) {
         sharedWords++;
+        // Words with / or - are compound terms (e.g., "push/pull")
+        if (workoutWords[i].contains('/') || workoutWords[i].contains('-')) {
+          hasCompoundWord = true;
+        }
       } else {
         break;
       }
     }
 
-    // Require at least 2 shared prefix words (e.g., "Full Body", "Push/Pull")
-    // Exception: if the workout name is only 1 word, allow 1-word match
-    return sharedWords >= 2 || (workoutWords.length == 1 && sharedWords == 1);
+    // Require at least 2 shared prefix words, OR 1 if:
+    // - the workout name is only 1 word, or
+    // - the shared word is a compound term (contains / or -)
+    return sharedWords >= 2 ||
+        (sharedWords == 1 && (workoutWords.length == 1 || hasCompoundWord));
   }
 
   /// Finds the best matching warm-down stretch for a workout routine.
