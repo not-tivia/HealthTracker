@@ -768,7 +768,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
     final storage = context.read<StorageService>();
 
     if (_didWorkoutToday) {
-      // Already did a workout today — show what we did
+      // Already did a workout today - show what we did
       final todayRoutineId = _workouts.first.routineId;
       String? todayRoutineName;
       if (todayRoutineId != null) {
@@ -780,7 +780,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
       return WorkoutDaySuggestion(
         routineName: todayRoutineName,
         completedToday: true,
-        onTap: () {}, // No action — already done
+        onTap: () {}, // No action - already done
       );
     }
 
@@ -857,7 +857,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
     String? relevantRoutineId;
 
     if (_didWorkoutToday) {
-      // Workout done today — suggest cool-down for what we just did
+      // Workout done today - suggest cool-down for what we just did
       relevantRoutineId = _workouts.first.routineId;
       if (relevantRoutineId != null) {
         final warmDownId = storage.findWarmDownStretch(relevantRoutineId);
@@ -870,7 +870,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
         }
       }
     } else {
-      // No workout today — suggest warm-up for the next scheduled workout
+      // No workout today - suggest warm-up for the next scheduled workout
       final nextId = storage.getNextInRotation(lastRoutineId: _lastCompletedRoutineId);
       relevantRoutineId = nextId;
       if (nextId != null) {
@@ -918,13 +918,13 @@ class _WorkoutTabState extends State<WorkoutTab> {
             stretchName: stretch.name,
           )) {
             if (!_didWorkoutToday) {
-              // Before workout — prioritize warm-ups
+              // Before workout - prioritize warm-ups
               final nameLower = stretch.name.toLowerCase();
               if (nameLower.contains('warm up') || nameLower.contains('warmup') || nameLower.contains('warm-up') || nameLower.contains('pre-workout')) {
                 circleStretches.add(stretch);
               }
             } else {
-              // After workout — prioritize cool-downs
+              // After workout - prioritize cool-downs
               final nameLower = stretch.name.toLowerCase();
               if (nameLower.contains('warm down') || nameLower.contains('cooldown') || nameLower.contains('cool down') || nameLower.contains('cool-down') || nameLower.contains('post-workout')) {
                 circleStretches.add(stretch);
@@ -4178,7 +4178,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     value: isSelected,
                     onChanged: (v) => setDialogState(() { if (v == true) selection.add(exercise); else selection.removeWhere((e) => e.id == exercise.id); }),
                     title: Text(exercise.name, overflow: TextOverflow.ellipsis),
-                    subtitle: Text('${exercise.muscleGroup ?? "General"} -ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ${exercise.defaultSets} sets', style: TextStyle(color: Colors.grey.shade500)),
+                    subtitle: Text('${exercise.muscleGroup ?? "General"} \u{2022} ${exercise.defaultSets} sets \u{2022} ${exercise.repsDisplay}', style: TextStyle(color: Colors.grey.shade500)),
                     secondary: exercise.photoPath != null
                         ? ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(exercise.photoPath!), width: 48, height: 48, fit: BoxFit.cover))
                         : Container(width: 48, height: 48, decoration: BoxDecoration(color: AppTheme.cardColor, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.fitness_center)),

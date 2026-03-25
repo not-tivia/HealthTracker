@@ -1,6 +1,6 @@
 import 'saved_exercise.dart';
 
-/// Default exercise library — 10 most popular exercises per muscle group.
+/// Default exercise library - 10 most popular exercises per muscle group.
 /// These are seeded on first launch and skip any exercises whose name
 /// already exists in the user's library.
 class DefaultExercises {
