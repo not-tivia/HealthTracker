@@ -282,9 +282,22 @@ class _WorkoutTabState extends State<WorkoutTab> {
     }
   }
 
+  /// Returns the routineId of the most recent workout that is in the
+  /// active rotation. Skips workouts with null routineId or routines
+  /// not in the rotation, so the suggestion always advances correctly.
   String? get _lastCompletedRoutineId {
     if (_workouts.isEmpty) return null;
-    return _workouts.first.routineId;
+    final storage = context.read<StorageService>();
+    final rotationOrder = storage.getWorkoutRotationOrder();
+    if (rotationOrder.isEmpty) return null;
+
+    // Find the most recent workout whose routine is in the rotation
+    for (final workout in _workouts) {
+      if (workout.routineId != null && rotationOrder.contains(workout.routineId)) {
+        return workout.routineId;
+      }
+    }
+    return null;
   }
 
   /// Whether any workout (strength or cardio) was done today
