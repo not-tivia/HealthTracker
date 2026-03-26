@@ -572,12 +572,17 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     final dayNum = index + 1;
                     final isCompleted = completions[dayNum] ?? false;
                     final isToday = dayNum == today;
+                        // Calculate the actual date for this day
+                        final now = DateTime.now();
+                        final mondayOfWeek = now.subtract(Duration(days: now.weekday - 1));
+                        final tappedDate = DateTime(mondayOfWeek.year, mondayOfWeek.month, mondayOfWeek.day + index);
+
                     return GestureDetector(
                       onTap: () {
                         showDialog(
                           context: context,
                           useSafeArea: false,
-                          builder: (context) => const DailyHistoryDialog(),
+                          builder: (context) => DailyHistoryDialog(initialDate: tappedDate),
                         );
                       },
                       child: Column(
@@ -695,12 +700,17 @@ class _WorkoutTabState extends State<WorkoutTab> {
                         final dayDate = DateTime.now().subtract(Duration(days: today - dayNum));
                         final cardioOnly = !isCompleted && isToday && isCardioMet;
 
+                        // Calculate the actual date for this day
+                        final now2 = DateTime.now();
+                        final mondayOfWeek2 = now2.subtract(Duration(days: now2.weekday - 1));
+                        final tappedDate2 = DateTime(mondayOfWeek2.year, mondayOfWeek2.month, mondayOfWeek2.day + index);
+
                         return GestureDetector(
                           onTap: () {
                             showDialog(
                               context: context,
                               useSafeArea: false,
-                              builder: (context) => const DailyHistoryDialog(),
+                              builder: (context) => DailyHistoryDialog(initialDate: tappedDate2),
                             );
                           },
                           child: Column(
