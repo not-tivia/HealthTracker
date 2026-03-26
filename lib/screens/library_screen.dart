@@ -89,26 +89,8 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
           labelColor: AppTheme.primaryColor,
           unselectedLabelColor: AppTheme.textTertiary,
           tabs: [
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.fitness_center, size: 18),
-                  const SizedBox(width: 6),
-                  Text('Exercises (${_exercises.length})'),
-                ],
-              ),
-            ),
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.self_improvement, size: 18),
-                  const SizedBox(width: 6),
-                  Text('Stretches (${_stretches.length})'),
-                ],
-              ),
-            ),
+            Tab(text: 'Exercises (${_exercises.length})'),
+            Tab(text: 'Stretches (${_stretches.length})'),
           ],
         ),
       ),

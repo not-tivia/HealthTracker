@@ -373,10 +373,6 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     const SizedBox(height: 12),
                     _buildMyLibraryButton(),
                     const SizedBox(height: 24),
-                    _buildWarmupStretchesSection(),
-                    const SizedBox(height: 24),
-                    _buildMyRoutinesSection(),
-                    const SizedBox(height: 24),
                     _buildRecentActivitiesSection(),
                     const SizedBox(height: 100),
                   ],
@@ -785,7 +781,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text('My Library',
+        Text('Exercises & Stretches',
             style: TextStyle(color: Colors.grey.shade400, fontSize: 14)),
         GestureDetector(
           onTap: () => _openLibrary(),
@@ -800,7 +796,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
               children: [
                 Icon(Icons.search, size: 16, color: AppTheme.primaryColor),
                 const SizedBox(width: 4),
-                Text('Library',
+                Text('View Full Library',
                     style: TextStyle(fontSize: 12, color: AppTheme.primaryColor)),
               ],
             ),
