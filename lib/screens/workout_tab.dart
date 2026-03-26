@@ -816,56 +816,6 @@ class _WorkoutTabState extends State<WorkoutTab> {
     }
   }
 
-  void _showStretchOptions(SavedStretch stretch) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.surfaceColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.edit),
-                title: const Text('Edit Stretch'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showCreateStretchDialog(existingStretch: stretch);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.delete, color: Colors.red.shade400),
-                title: Text('Delete', style: TextStyle(color: Colors.red.shade400)),
-                onTap: () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Delete Stretch?'),
-                      content: Text('This will remove "${stretch.name}" from your library.'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                        FilledButton(onPressed: () => Navigator.pop(context, true), style: FilledButton.styleFrom(backgroundColor: Colors.red.shade400), child: const Text('Delete')),
-                      ],
-                    ),
-                  );
-                  if (confirm == true) {
-                    Navigator.pop(context);
-                    await context.read<StorageService>().deleteSavedStretch(stretch.id);
-                    _loadData();
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   void _showCreateNewOptions() {
     showModalBottomSheet(
       context: context,
