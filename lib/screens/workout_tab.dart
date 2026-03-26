@@ -772,20 +772,31 @@ class _WorkoutTabState extends State<WorkoutTab> {
   }
 
   Widget _buildMyLibraryButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () => _openLibrary(),
-        icon: const Icon(Icons.library_books, size: 20),
-        label: Text('My Library (${_exercises.length} exercises, ${_stretches.length} stretches)',
-            style: const TextStyle(fontSize: 14)),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppTheme.primaryColor,
-          side: BorderSide(color: AppTheme.primaryColor.withOpacity(0.5)),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text('My Library',
+            style: TextStyle(color: Colors.grey.shade400, fontSize: 14)),
+        GestureDetector(
+          onTap: () => _openLibrary(),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.search, size: 16, color: AppTheme.primaryColor),
+                const SizedBox(width: 4),
+                Text('Library',
+                    style: TextStyle(fontSize: 12, color: AppTheme.primaryColor)),
+              ],
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 
