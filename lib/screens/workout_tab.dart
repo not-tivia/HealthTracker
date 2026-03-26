@@ -71,6 +71,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
   bool _stretchSectionCollapsed = false;
   List<String> _stretchRoutineOrder = []; // Stored order of routine IDs
   bool _isStretchSelected = false;
+  bool _showRecentInWeekCard = false;
 
   List<Workout> _workouts = [];
   List<WorkoutRoutine> _routines = [];
@@ -372,8 +373,6 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     _buildImportExportButtons(),
                     const SizedBox(height: 12),
                     _buildMyLibraryButton(),
-                    const SizedBox(height: 24),
-                    _buildRecentActivitiesSection(),
                     const SizedBox(height: 100),
                   ],
                 ),
@@ -751,6 +750,64 @@ class _WorkoutTabState extends State<WorkoutTab> {
                     );
                   },
                 ),
+                // Expandable recent activity
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () => setState(() => _showRecentInWeekCard = !_showRecentInWeekCard),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _showRecentInWeekCard ? 'Hide recent' : 'See recent',
+                        style: TextStyle(color: AppTheme.primaryColor, fontSize: 12),
+                      ),
+                      Icon(
+                        _showRecentInWeekCard ? Icons.expand_less : Icons.expand_more,
+                        size: 18,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ],
+                  ),
+                ),
+                if (_showRecentInWeekCard) ...[
+                  const SizedBox(height: 8),
+                  ..._recentActivities.take(3).map((activity) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade800,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            activity.isCardio ? Icons.directions_run : Icons.fitness_center,
+                            size: 16,
+                            color: activity.isCardio ? AppTheme.warningColor : AppTheme.primaryColor,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  activity.displayName,
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  '${DateFormat('MMM d').format(activity.date)} \u{2022} ${activity.durationMinutes} min',
+                                  style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )),
+                ],
               ],
             ),
           ),
@@ -778,31 +835,25 @@ class _WorkoutTabState extends State<WorkoutTab> {
   }
 
   Widget _buildMyLibraryButton() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text('Exercises & Stretches',
-            style: TextStyle(color: Colors.grey.shade400, fontSize: 14)),
-        GestureDetector(
-          onTap: () => _openLibrary(),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.search, size: 16, color: AppTheme.primaryColor),
-                const SizedBox(width: 4),
-                Text('View Full Library',
-                    style: TextStyle(fontSize: 12, color: AppTheme.primaryColor)),
-              ],
-            ),
-          ),
+    return GestureDetector(
+      onTap: () => _openLibrary(),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.primaryColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
         ),
-      ],
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search, size: 18, color: AppTheme.primaryColor),
+            const SizedBox(width: 8),
+            Text('View Exercise & Stretch Library',
+                style: TextStyle(fontSize: 13, color: AppTheme.primaryColor, fontWeight: FontWeight.w500)),
+          ],
+        ),
+      ),
     );
   }
 
