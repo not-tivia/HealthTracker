@@ -29,6 +29,7 @@ class _TodayTabState extends State<TodayTab> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       context.read<StepTrackingService>().refresh();
     });
   }

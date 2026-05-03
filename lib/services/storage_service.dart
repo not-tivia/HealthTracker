@@ -272,6 +272,15 @@ class StorageService extends ChangeNotifier {
       notes: notes,
     );
     await saveWorkout(workout);
+
+    // Update rotation pointer if this workout is in the rotation
+    if (routineId != null) {
+      final rotationOrder = getWorkoutRotationOrder();
+      final rotationIndex = rotationOrder.indexOf(routineId);
+      if (rotationIndex != -1) {
+        await saveLastCompletedRotationIndex(rotationIndex);
+      }
+    }
   }
 
   // ============ WORKOUT HISTORY ============
@@ -856,6 +865,8 @@ class StorageService extends ChangeNotifier {
   // ============ WORKOUT ROTATION ORDER ============
   Future<void> saveWorkoutRotationOrder(List<String> order) async {
     await _appDataBox.put('workout_rotation_order', order);
+    // Reset rotation pointer when order changes
+    await _appDataBox.delete('last_completed_rotation_index');
     notifyListeners();
   }
 
@@ -865,16 +876,35 @@ class StorageService extends ChangeNotifier {
     return List<String>.from(order);
   }
 
+  Future<void> saveLastCompletedRotationIndex(int index) async {
+    await _appDataBox.put('last_completed_rotation_index', index);
+  }
+
+  int? getLastCompletedRotationIndex() {
+    return _appDataBox.get('last_completed_rotation_index') as int?;
+  }
+
   /// Returns the next routine ID in the rotation after [lastRoutineId].
+  /// Falls back to saved rotation index if lastRoutineId not found.
   /// Returns null if rotation is empty.
   String? getNextInRotation({required String? lastRoutineId}) {
     final order = getWorkoutRotationOrder();
     if (order.isEmpty) return null;
-    if (lastRoutineId == null) return order.first;
 
-    final index = order.indexOf(lastRoutineId);
-    if (index == -1) return order.first;
-    return order[(index + 1) % order.length];
+    if (lastRoutineId != null) {
+      final index = order.indexOf(lastRoutineId);
+      if (index != -1) {
+        return order[(index + 1) % order.length];
+      }
+    }
+
+    // Fallback to saved index pointer
+    final savedIndex = getLastCompletedRotationIndex();
+    if (savedIndex != null && savedIndex < order.length) {
+      return order[(savedIndex + 1) % order.length];
+    }
+
+    return order.first;
   }
 
   /// Returns up to 3 routine IDs starting from the next in rotation.
@@ -925,40 +955,149 @@ class StorageService extends ChangeNotifier {
   }
 
   /// Checks if a stretch routine name matches a workout routine name using shared prefix logic.
-  /// Matches workout and stretch names by finding a shared word prefix
-  /// of at least 2 words. E.g., "Full Body Lift and Carry" and
-  /// "Full Body Pre-Workout Warm-up" share "Full Body" (2 words).
+  /// Words that carry no meaning for matching purposes
+  static final _fillerWords = {
+    'day', 'workout', 'pre-workout', 'post-workout', 'warm-up', 'warmup',
+    'warm', 'up', 'down', 'cool', 'cooldown', 'cool-down', 'routine',
+    'session', 'stretch', 'stretches', 'stretching', 'the', 'and', 'a',
+    'for', 'my', 'of',
+  };
+
+  /// Synonym groups for fitness terms - words in the same group are interchangeable
+  static final _synonymGroups = [
+    {'leg', 'legs', 'lower', 'lower-body'},
+    {'chest', 'pec', 'pecs', 'pectoral'},
+    {'back', 'lat', 'lats', 'latissimus', 'lateral'},
+    {'shoulder', 'shoulders', 'delt', 'delts', 'deltoid'},
+    {'arm', 'arms', 'bicep', 'biceps', 'tricep', 'triceps'},
+    {'core', 'abs', 'abdominal', 'abdominals'},
+    {'glute', 'glutes', 'gluteal', 'hip', 'hips'},
+    {'full', 'total', 'whole'},
+    {'body', 'compound'},
+    {'upper', 'upper-body'},
+    {'push', 'pressing'},
+    {'pull', 'pulling', 'rowing'},
+  ];
+
+  /// Scores how well a stretch name matches a workout name.
+  /// Returns 0.0 (no match) to 1.0 (perfect match).
+  static double matchScore({
+    required String workoutName,
+    required String stretchName,
+  }) {
+    final workoutKeywords = _extractKeywords(workoutName);
+    final stretchKeywords = _extractKeywords(stretchName);
+
+    if (workoutKeywords.isEmpty || stretchKeywords.isEmpty) return 0.0;
+
+    // Score: what fraction of workout keywords appear in the stretch name
+    int forwardMatches = 0;
+    for (final wk in workoutKeywords) {
+      for (final sk in stretchKeywords) {
+        if (_wordsMatch(wk, sk)) {
+          forwardMatches++;
+          break;
+        }
+      }
+    }
+
+    // Score: what fraction of stretch keywords appear in the workout name
+    int reverseMatches = 0;
+    for (final sk in stretchKeywords) {
+      for (final wk in workoutKeywords) {
+        if (_wordsMatch(wk, sk)) {
+          reverseMatches++;
+          break;
+        }
+      }
+    }
+
+    // Use the better direction's ratio
+    final forwardScore = forwardMatches / workoutKeywords.length;
+    final reverseScore = reverseMatches / stretchKeywords.length;
+    return forwardScore > reverseScore ? forwardScore : reverseScore;
+  }
+
+  /// Returns true if score is above threshold (kept for existing callers)
   static bool stretchNameMatchesWorkout({
     required String workoutName,
     required String stretchName,
   }) {
-    final workoutWords = workoutName.toLowerCase().trim().split(RegExp(r'\s+'));
-    final stretchWords = stretchName.toLowerCase().trim().split(RegExp(r'\s+'));
+    return matchScore(workoutName: workoutName, stretchName: stretchName) >= 0.5;
+  }
 
-    // Count shared prefix words
-    int sharedWords = 0;
-    bool hasCompoundWord = false;
-    for (int i = 0; i < workoutWords.length && i < stretchWords.length; i++) {
-      if (workoutWords[i] == stretchWords[i]) {
-        sharedWords++;
-        // Words with / or - are compound terms (e.g., "push/pull")
-        if (workoutWords[i].contains('/') || workoutWords[i].contains('-')) {
-          hasCompoundWord = true;
-        }
-      } else {
-        break;
+  /// Finds the best matching stretch routine for a workout by name.
+  /// Returns the stretch with the highest match score, or null if nothing scores.
+  static String? findBestMatchingStretch({
+    required String workoutName,
+    required List<dynamic> stretchRoutines,
+    bool warmUpOnly = false,
+    bool coolDownOnly = false,
+  }) {
+    String? bestId;
+    double bestScore = 0.0;
+
+    for (final stretch in stretchRoutines) {
+      final stretchName = stretch.name as String;
+      final nameLower = stretchName.toLowerCase();
+
+      // Filter by type if requested
+      if (warmUpOnly) {
+        final isWarmUp = nameLower.contains('warm up') ||
+            nameLower.contains('warmup') || nameLower.contains('warm-up') ||
+            nameLower.contains('pre-workout') || nameLower.contains('pre workout');
+        if (!isWarmUp) continue;
+      }
+      if (coolDownOnly) {
+        final isCoolDown = nameLower.contains('warm down') ||
+            nameLower.contains('cooldown') || nameLower.contains('cool down') ||
+            nameLower.contains('cool-down') || nameLower.contains('post-workout') ||
+            nameLower.contains('post workout');
+        if (!isCoolDown) continue;
+      }
+
+      final score = matchScore(workoutName: workoutName, stretchName: stretchName);
+      if (score > bestScore) {
+        bestScore = score;
+        bestId = stretch.id as String;
       }
     }
 
-    // Require at least 2 shared prefix words, OR 1 if:
-    // - the workout name is only 1 word, or
-    // - the shared word is a compound term (contains / or -)
-    return sharedWords >= 2 ||
-        (sharedWords == 1 && (workoutWords.length == 1 || hasCompoundWord));
+    // Only return if we have a reasonable match
+    return bestScore >= 0.5 ? bestId : null;
+  }
+
+  /// Extract meaningful keywords from a name, stripping filler words
+  static List<String> _extractKeywords(String name) {
+    // Split on spaces, slashes, and hyphens (but keep compound terms like push/pull together)
+    final words = name.toLowerCase().trim().split(RegExp(r'\s+'));
+    final keywords = <String>[];
+    for (final word in words) {
+      if (word.isEmpty) continue;
+      if (_fillerWords.contains(word)) continue;
+      keywords.add(word);
+    }
+    return keywords;
+  }
+
+  /// Fuzzy word match: exact, singular/plural, synonyms, or substring containment
+  static bool _wordsMatch(String a, String b) {
+    if (a == b) return true;
+    // Handle simple plural: leg/legs, push/pushes
+    if (a.startsWith(b) && (a == '${b}s' || a == '${b}es')) return true;
+    if (b.startsWith(a) && (b == '${a}s' || b == '${a}es')) return true;
+    // Check synonym groups
+    for (final group in _synonymGroups) {
+      if (group.contains(a) && group.contains(b)) return true;
+    }
+    // Handle substring containment for compound words: "push" in "push/pull"
+    if (a.length >= 3 && b.contains(a)) return true;
+    if (b.length >= 3 && a.contains(b)) return true;
+    return false;
   }
 
   /// Finds the best matching warm-down stretch for a workout routine.
-  /// Checks explicit pairings first, then falls back to name matching.
+  /// Checks explicit pairings first, then uses best-score matching.
   String? findWarmDownStretch(String workoutRoutineId) {
     // Check explicit pairing first
     final pairing = getStretchPairing(workoutRoutineId);
@@ -966,27 +1105,27 @@ class StorageService extends ChangeNotifier {
       return pairing['warmDown'];
     }
 
-    // Fall back to name matching
+    // Fall back to best-score matching
     final routines = getAllWorkoutRoutines();
     final workoutRoutine = routines.where((r) => r.id == workoutRoutineId).firstOrNull;
     if (workoutRoutine == null) return null;
 
     final stretches = getAllStretchRoutines();
-    for (final stretch in stretches) {
-      if (stretchNameMatchesWorkout(workoutName: workoutRoutine.name, stretchName: stretch.name)) {
-        final nameLower = stretch.name.toLowerCase();
-        if (nameLower.contains('warm down') || nameLower.contains('cooldown') || nameLower.contains('cool down') || nameLower.contains('cool-down') || nameLower.contains('post-workout')) {
-          return stretch.id;
-        }
-      }
-    }
 
-    // If no warm-down found, return any name match
-    for (final stretch in stretches) {
-      if (stretchNameMatchesWorkout(workoutName: workoutRoutine.name, stretchName: stretch.name)) {
-        return stretch.id;
-      }
-    }
+    // Try cool-down specific first
+    final coolDown = findBestMatchingStretch(
+      workoutName: workoutRoutine.name,
+      stretchRoutines: stretches,
+      coolDownOnly: true,
+    );
+    if (coolDown != null) return coolDown;
+
+    // Fall back to any matching stretch
+    final anyMatch = findBestMatchingStretch(
+      workoutName: workoutRoutine.name,
+      stretchRoutines: stretches,
+    );
+    if (anyMatch != null) return anyMatch;
 
     return null;
   }

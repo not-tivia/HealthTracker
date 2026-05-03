@@ -225,13 +225,6 @@ class RestTimerManager extends ChangeNotifier {
     }
   }
   
-  Future<void> _updateMediaStyleNotification() async {
-    // Chronometer handles countdown automatically - no need to update every second
-    // This prevents repeated notification posts that buzz wearables
-    // Only update when pause state changes
-    return;
-  }
-  
   /// Update notification only when pause state changes
   Future<void> _updateNotificationForPauseChange() async {
     if (!_isRunning) return;
@@ -251,7 +244,7 @@ class RestTimerManager extends ChangeNotifier {
   Future<void> _playTickSound() async {
     if (!_soundEnabled) return;
     try {
-      await _audioPlayer.play(AssetSource('sounds/beep.mp3'));
+      await _audioPlayer.play(AssetSource('sounds/beep.wav'));
     } catch (e) {
       // Sound file not found, silently ignore
     }
@@ -260,7 +253,7 @@ class RestTimerManager extends ChangeNotifier {
   Future<void> _playAlarmSound() async {
     if (!_soundEnabled) return;
     try {
-      await _audioPlayer.play(AssetSource('sounds/alarm.mp3'));
+      await _audioPlayer.play(AssetSource('sounds/alarm.wav'));
     } catch (e) {
       // Sound file not found, try system default
       try {
@@ -284,8 +277,8 @@ class RestTimerManager extends ChangeNotifier {
         'rest_timer_complete',
         'Rest Timer Complete',
         channelDescription: 'Notifications for rest timer completion',
-        importance: Importance.low,  // Lower importance = less intrusive
-        priority: Priority.low,
+        importance: Importance.high,
+        priority: Priority.high,
         playSound: true,
         enableVibration: true,
         ticker: 'Rest time is up!',
@@ -375,10 +368,13 @@ class _RestTimerWidgetState extends State<RestTimerWidget> with SingleTickerProv
           _pulseController.reset();
         }
         
+        final screenWidth = MediaQuery.of(context).size.width;
+        final timerWidth = screenWidth - 48 < 320 ? screenWidth - 48 : 320.0;
+
         return Material(
           color: Colors.transparent,
           child: Container(
-            width: 320,
+            width: timerWidth,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: isComplete
@@ -733,63 +729,178 @@ class MinimizedRestTimerBar extends StatelessWidget {
 }
 
 /// Bottom sheet to select rest time before starting timer
-class RestTimeSelector extends StatelessWidget {
+class RestTimeSelector extends StatefulWidget {
   final Function(int seconds) onSelect;
 
   const RestTimeSelector({super.key, required this.onSelect});
 
   @override
+  State<RestTimeSelector> createState() => _RestTimeSelectorState();
+}
+
+class _RestTimeSelectorState extends State<RestTimeSelector> {
+  bool _showCustomInput = false;
+  final _minutesController = TextEditingController(text: '2');
+  final _secondsController = TextEditingController(text: '00');
+
+  @override
+  void dispose() {
+    _minutesController.dispose();
+    _secondsController.dispose();
+    super.dispose();
+  }
+
+  void _submitCustomTime() {
+    final minutes = int.tryParse(_minutesController.text) ?? 0;
+    final seconds = int.tryParse(_secondsController.text) ?? 0;
+    final total = minutes * 60 + seconds;
+    if (total > 0) {
+      Navigator.pop(context);
+      widget.onSelect(total);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      child: SingleChildScrollView(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Rest Timer',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Select rest duration',
+                style: TextStyle(color: Colors.grey.shade400),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  _buildTimeOption(60, '1:00', 'Light'),
+                  const SizedBox(width: 12),
+                  _buildTimeOption(90, '1:30', 'Moderate'),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  _buildTimeOption(120, '2:00', 'Heavy'),
+                  const SizedBox(width: 12),
+                  _buildTimeOption(180, '3:00', 'Max Effort'),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (_showCustomInput)
+                _buildCustomInput()
+              else
+                _buildCustomButton(),
+            ],
+          ),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+      ),
+    );
+  }
+
+  Widget _buildCustomButton() {
+    return InkWell(
+      onTap: () => setState(() => _showCustomInput = true),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: AppTheme.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.primaryColor.withOpacity(0.5)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
-              'Rest Timer',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
+            Icon(Icons.edit, size: 18, color: AppTheme.primaryColor),
+            const SizedBox(width: 8),
             Text(
-              'Select rest duration',
-              style: TextStyle(color: Colors.grey.shade400),
+              'Custom Time',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryColor,
+              ),
             ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                _buildTimeOption(context, 60, '1:00', 'Light'),
-                const SizedBox(width: 12),
-                _buildTimeOption(context, 90, '1:30', 'Moderate'),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _buildTimeOption(context, 120, '2:00', 'Heavy'),
-                const SizedBox(width: 12),
-                _buildTimeOption(context, 180, '3:00', 'Max Effort'),
-              ],
-            ),
-            const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTimeOption(
-      BuildContext context, int seconds, String time, String label) {
+  Widget _buildCustomInput() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _minutesController,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              decoration: InputDecoration(
+                labelText: 'min',
+                labelStyle: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: Text(':', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          ),
+          Expanded(
+            child: TextField(
+              controller: _secondsController,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              decoration: InputDecoration(
+                labelText: 'sec',
+                labelStyle: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onSubmitted: (_) => _submitCustomTime(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton(
+            onPressed: _submitCustomTime,
+            child: const Text('Start'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimeOption(int seconds, String time, String label) {
     return Expanded(
       child: InkWell(
         onTap: () {
           Navigator.pop(context);
-          onSelect(seconds);
+          widget.onSelect(seconds);
         },
         borderRadius: BorderRadius.circular(16),
         child: Container(

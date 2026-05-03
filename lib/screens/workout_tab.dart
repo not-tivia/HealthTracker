@@ -286,17 +286,25 @@ class _WorkoutTabState extends State<WorkoutTab> {
   /// Returns the routineId of the most recent workout that is in the
   /// active rotation. Skips workouts with null routineId or routines
   /// not in the rotation, so the suggestion always advances correctly.
+  /// Falls back to saved rotation index if no matching workout found.
   String? get _lastCompletedRoutineId {
-    if (_workouts.isEmpty) return null;
     final storage = context.read<StorageService>();
     final rotationOrder = storage.getWorkoutRotationOrder();
     if (rotationOrder.isEmpty) return null;
 
     // Find the most recent workout whose routine is in the rotation
-    for (final workout in _workouts) {
-      if (workout.routineId != null && rotationOrder.contains(workout.routineId)) {
-        return workout.routineId;
+    if (_workouts.isNotEmpty) {
+      for (final workout in _workouts) {
+        if (workout.routineId != null && rotationOrder.contains(workout.routineId)) {
+          return workout.routineId;
+        }
       }
+    }
+
+    // Fallback: use saved rotation index pointer
+    final savedIndex = storage.getLastCompletedRotationIndex();
+    if (savedIndex != null && savedIndex < rotationOrder.length) {
+      return rotationOrder[savedIndex];
     }
     return null;
   }
@@ -1150,21 +1158,20 @@ class _WorkoutTabState extends State<WorkoutTab> {
             suggestionText = 'Warm up: ${stretch.name}';
           }
         }
-        // Fall back to name matching for warm-up
+        // Fall back to best-score matching for warm-up
         if (suggestedStretchId == null) {
           final routine = _routines.where((r) => r.id == nextId).firstOrNull;
           if (routine != null) {
-            for (final stretch in _stretchRoutines) {
-              if (StorageService.stretchNameMatchesWorkout(
-                workoutName: routine.name,
-                stretchName: stretch.name,
-              )) {
-                final nameLower = stretch.name.toLowerCase();
-                if (nameLower.contains('warm up') || nameLower.contains('warmup') || nameLower.contains('warm-up') || nameLower.contains('pre-workout')) {
-                  suggestedStretchId = stretch.id;
-                  suggestionText = 'Warm up: ${stretch.name}';
-                  break;
-                }
+            final bestWarmUp = StorageService.findBestMatchingStretch(
+              workoutName: routine.name,
+              stretchRoutines: _stretchRoutines,
+              warmUpOnly: true,
+            );
+            if (bestWarmUp != null) {
+              final stretch = _stretchRoutines.where((s) => s.id == bestWarmUp).firstOrNull;
+              if (stretch != null) {
+                suggestedStretchId = stretch.id;
+                suggestionText = 'Warm up: ${stretch.name}';
               }
             }
           }
@@ -1175,29 +1182,32 @@ class _WorkoutTabState extends State<WorkoutTab> {
     // Build circles: prioritize matching stretches for the relevant workout
     final circleStretches = <dynamic>[];
 
-    // First, find all stretches matching the relevant workout
+    // First, find stretches matching the relevant workout using scoring
     if (relevantRoutineId != null) {
       final routine = _routines.where((r) => r.id == relevantRoutineId).firstOrNull;
       if (routine != null) {
+        // Score all stretches and sort by match quality
+        final scored = <MapEntry<dynamic, double>>[];
         for (final stretch in _stretchRoutines) {
-          if (StorageService.stretchNameMatchesWorkout(
+          final nameLower = stretch.name.toLowerCase();
+          final isWarmUp = nameLower.contains('warm up') || nameLower.contains('warmup') || nameLower.contains('warm-up') || nameLower.contains('pre-workout') || nameLower.contains('pre workout');
+          final isCoolDown = nameLower.contains('warm down') || nameLower.contains('cooldown') || nameLower.contains('cool down') || nameLower.contains('cool-down') || nameLower.contains('post-workout') || nameLower.contains('post workout');
+
+          // Filter by context (before/after workout)
+          if (!_didStrengthWorkoutToday && !isWarmUp) continue;
+          if (_didStrengthWorkoutToday && !isCoolDown) continue;
+
+          final score = StorageService.matchScore(
             workoutName: routine.name,
             stretchName: stretch.name,
-          )) {
-            if (!_didStrengthWorkoutToday) {
-              // Before workout - prioritize warm-ups
-              final nameLower = stretch.name.toLowerCase();
-              if (nameLower.contains('warm up') || nameLower.contains('warmup') || nameLower.contains('warm-up') || nameLower.contains('pre-workout')) {
-                circleStretches.add(stretch);
-              }
-            } else {
-              // After workout - prioritize cool-downs
-              final nameLower = stretch.name.toLowerCase();
-              if (nameLower.contains('warm down') || nameLower.contains('cooldown') || nameLower.contains('cool down') || nameLower.contains('cool-down') || nameLower.contains('post-workout')) {
-                circleStretches.add(stretch);
-              }
-            }
+          );
+          if (score >= 0.5) {
+            scored.add(MapEntry(stretch, score));
           }
+        }
+        scored.sort((a, b) => b.value.compareTo(a.value));
+        for (final entry in scored) {
+          circleStretches.add(entry.key);
         }
       }
     }

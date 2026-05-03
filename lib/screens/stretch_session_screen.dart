@@ -34,11 +34,12 @@ class _StretchSessionScreenState extends State<StretchSessionScreen> {
     final storage = context.read<StorageService>();
     final allStretches = storage.getAllSavedStretches();
     
-    _routineStretches = widget.routine.stretches;
+    _routineStretches = widget.routine.stretches.where((rs) {
+      return allStretches.any((s) => s.id == rs.savedStretchId);
+    }).toList();
     _stretches = _routineStretches.map((rs) {
       final saved = allStretches.firstWhere(
         (s) => s.id == rs.savedStretchId,
-        orElse: () => SavedStretch(id: '', name: 'Unknown Stretch'),
       );
       // Apply override duration if set
       return saved.copyWith(

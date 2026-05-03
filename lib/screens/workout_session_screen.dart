@@ -67,6 +67,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final storage = context.read<StorageService>();
     final history = await storage.getExerciseHistory();
     final allWorkouts = storage.getAllWorkouts();
+    if (!mounted) return;
     setState(() {
       _exerciseHistory = history;
       _allWorkouts = allWorkouts;
@@ -426,7 +427,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       final workout = exerciseWorkouts[exerciseWorkouts.length - 1 - i];
       final ex = workout.exercises.firstWhere((e) => e.name == _currentExercise.name);
       if (ex.completedSets.isNotEmpty) {
-        final maxWeight = ex.completedSets.map((s) => s.weight).reduce((a, b) => a > b ? a : b);
+        final weights = ex.completedSets.map((s) => s.weight);
+        final maxWeight = weights.reduce((a, b) => a > b ? a : b);
         chartData.add(FlSpot(i.toDouble(), maxWeight));
         workoutDates.add(DateFormat('M/d').format(workout.date));
       }
@@ -702,7 +704,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
   }
 
-  void _completeWorkout() async {
+  Future<void> _completeWorkout() async {
     _saveCurrentExercise();
     if (_completedExercises.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -839,7 +841,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
   }
 
-  void _launchYouTube(String url) async {
+  Future<void> _launchYouTube(String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
