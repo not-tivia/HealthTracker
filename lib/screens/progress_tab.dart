@@ -841,7 +841,7 @@ class _AddWeightDialogState extends State<_AddWeightDialog> {
         maxHeight: 1200,
         imageQuality: 85,
       );
-      if (images.isNotEmpty) {
+      if (images.isNotEmpty && mounted) {
         setState(() =>
             _selectedPhotos.addAll(images.map((x) => File(x.path))));
       }
@@ -859,7 +859,7 @@ class _AddWeightDialogState extends State<_AddWeightDialog> {
         maxHeight: 1200,
         imageQuality: 85,
       );
-      if (image != null) {
+      if (image != null && mounted) {
         setState(() => _selectedPhotos.add(File(image.path)));
       }
     } catch (e) {
