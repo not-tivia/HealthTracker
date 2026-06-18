@@ -45,6 +45,7 @@ void main() {
     expect(restored.exercises.first.sets.length, 3);
     expect(restored.exercises.first.sets[0].weight, 135);
     expect(restored.exercises.first.sets[0].reps, 8);
+    expect(restored.lastSaved, DateTime(2026, 6, 17, 18, 52));
   });
 
   test('tryParse returns null on malformed JSON', () {
@@ -55,6 +56,18 @@ void main() {
   test('tryParse returns null on version mismatch', () {
     final bad = sample().toJsonString().replaceFirst('"version":1', '"version":999');
     expect(InProgressWorkout.tryParse(bad), isNull);
+  });
+
+  test('tryParse returns null when routineId is absent', () {
+    const json =
+        '{"version":1,"routineName":"X","startTime":"2026-06-17T18:30:00.000","exercises":[]}';
+    expect(InProgressWorkout.tryParse(json), isNull);
+  });
+
+  test('tryParse returns null when startTime is unparseable', () {
+    const json =
+        '{"version":1,"routineId":"r1","startTime":"not-a-date","exercises":[]}';
+    expect(InProgressWorkout.tryParse(json), isNull);
   });
 
   test('loggedExerciseCount counts only exercises with a non-empty set', () {
