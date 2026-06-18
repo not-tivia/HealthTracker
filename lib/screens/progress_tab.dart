@@ -361,7 +361,7 @@ class _ProgressTabState extends State<ProgressTab> {
 
   Widget _buildWeightEntryTile(WeightEntry entry, StorageService storage) {
     bool isSelected = _selectedForCompare.contains(entry);
-    bool hasPhoto = entry.photoPath != null && entry.photoPath!.isNotEmpty;
+    bool hasPhoto = entry.allPhotos.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -393,20 +393,43 @@ class _ProgressTabState extends State<ProgressTab> {
           child: Row(
             children: [
               if (hasPhoto) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.file(
-                    File(entry.photoPath!),
-                    width: 60,
-                    height: 60,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      width: 60,
-                      height: 60,
-                      color: AppTheme.cardColorLight,
-                      child: Icon(Icons.broken_image, color: AppTheme.textTertiary),
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(entry.allPhotos.first),
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 60,
+                          height: 60,
+                          color: AppTheme.cardColorLight,
+                          child: Icon(Icons.broken_image,
+                              color: AppTheme.textTertiary),
+                        ),
+                      ),
                     ),
-                  ),
+                    if (entry.allPhotos.length > 1)
+                      Positioned(
+                        right: 2,
+                        bottom: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '+${entry.allPhotos.length - 1}',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 10),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 16),
               ] else ...[
@@ -499,7 +522,7 @@ class _WeightEntryDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: entry.photoPath != null
+      height: entry.allPhotos.isNotEmpty
           ? MediaQuery.of(context).size.height * 0.7
           : MediaQuery.of(context).size.height * 0.4,
       decoration: BoxDecoration(
@@ -542,19 +565,30 @@ class _WeightEntryDetails extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (entry.photoPath != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.file(
-                        File(entry.photoPath!),
-                        width: double.infinity,
-                        height: 300,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          height: 300,
-                          color: AppTheme.cardColor,
-                          child: Center(
-                            child: Icon(Icons.broken_image, size: 48),
+                  if (entry.allPhotos.isNotEmpty)
+                    SizedBox(
+                      height: 300,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: entry.allPhotos.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 12),
+                        itemBuilder: (context, i) => ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Image.file(
+                            File(entry.allPhotos[i]),
+                            width: entry.allPhotos.length == 1
+                                ? MediaQuery.of(context).size.width - 40
+                                : 240,
+                            height: 300,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              width: 240,
+                              height: 300,
+                              color: AppTheme.cardColor,
+                              child: const Center(
+                                child: Icon(Icons.broken_image, size: 48),
+                              ),
+                            ),
                           ),
                         ),
                       ),
