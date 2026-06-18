@@ -46,11 +46,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   bool _isLoading = true;
   late DateTime _startTime = DateTime.now();
   Timer? _autosaveDebounce;
+  // Cached so the async autosave path never reads from a torn-down context.
+  late final StorageService _storage;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _storage = context.read<StorageService>();
     _exercises = List.from(widget.exercises);
     _initializeSets();
     _loadHistory();
@@ -152,7 +155,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
   void _autosave() {
     if (!mounted) return;
-    context.read<StorageService>().saveInProgressWorkout(_snapshot());
+    _storage.saveInProgressWorkout(_snapshot());
   }
 
   void _scheduleAutosave() {
