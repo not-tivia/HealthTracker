@@ -155,12 +155,12 @@ class _PhotoCompareScreenState extends State<PhotoCompareScreen> {
             Expanded(
               child: Container(
                 color: Colors.grey.shade900,
-                child: entry.photoPath != null
+                child: entry.allPhotos.isNotEmpty
                     ? InteractiveViewer(
                         minScale: 1.0,
                         maxScale: 4.0,
                         child: Image.file(
-                          File(entry.photoPath!),
+                          File(entry.allPhotos.first),
                           fit: BoxFit.contain,
                           errorBuilder: (context, error, stack) => Container(
                             color: Colors.grey.shade800,
@@ -335,9 +335,9 @@ class _PhotoCompareScreenState extends State<PhotoCompareScreen> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (entry.photoPath != null)
+          if (entry.allPhotos.isNotEmpty)
             Image.file(
-              File(entry.photoPath!),
+              File(entry.allPhotos.first),
               fit: BoxFit.contain,
             )
           else
@@ -487,11 +487,11 @@ class _PhotoCompareScreenState extends State<PhotoCompareScreen> {
                               padding: const EdgeInsets.all(12),
                               child: Row(
                                 children: [
-                                  if (entry.photoPath != null)
+                                  if (entry.allPhotos.isNotEmpty)
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
                                       child: Image.file(
-                                        File(entry.photoPath!),
+                                        File(entry.allPhotos.first),
                                         width: 80,
                                         height: 80,
                                         fit: BoxFit.cover,

@@ -361,7 +361,7 @@ class _ProgressTabState extends State<ProgressTab> {
 
   Widget _buildWeightEntryTile(WeightEntry entry, StorageService storage) {
     bool isSelected = _selectedForCompare.contains(entry);
-    bool hasPhoto = entry.photoPath != null && entry.photoPath!.isNotEmpty;
+    bool hasPhoto = entry.allPhotos.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -393,20 +393,43 @@ class _ProgressTabState extends State<ProgressTab> {
           child: Row(
             children: [
               if (hasPhoto) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.file(
-                    File(entry.photoPath!),
-                    width: 60,
-                    height: 60,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      width: 60,
-                      height: 60,
-                      color: AppTheme.cardColorLight,
-                      child: Icon(Icons.broken_image, color: AppTheme.textTertiary),
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(entry.allPhotos.first),
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 60,
+                          height: 60,
+                          color: AppTheme.cardColorLight,
+                          child: Icon(Icons.broken_image,
+                              color: AppTheme.textTertiary),
+                        ),
+                      ),
                     ),
-                  ),
+                    if (entry.allPhotos.length > 1)
+                      Positioned(
+                        right: 2,
+                        bottom: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '+${entry.allPhotos.length - 1}',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 10),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 16),
               ] else ...[
@@ -499,7 +522,7 @@ class _WeightEntryDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: entry.photoPath != null
+      height: entry.allPhotos.isNotEmpty
           ? MediaQuery.of(context).size.height * 0.7
           : MediaQuery.of(context).size.height * 0.4,
       decoration: BoxDecoration(
@@ -542,19 +565,32 @@ class _WeightEntryDetails extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (entry.photoPath != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.file(
-                        File(entry.photoPath!),
-                        width: double.infinity,
-                        height: 300,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          height: 300,
-                          color: AppTheme.cardColor,
-                          child: Center(
-                            child: Icon(Icons.broken_image, size: 48),
+                  if (entry.allPhotos.isNotEmpty)
+                    SizedBox(
+                      height: 300,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: entry.allPhotos.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 12),
+                        itemBuilder: (context, i) => ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Image.file(
+                            File(entry.allPhotos[i]),
+                            width: entry.allPhotos.length == 1
+                                ? MediaQuery.of(context).size.width - 40
+                                : 240,
+                            height: 300,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              width: entry.allPhotos.length == 1
+                                  ? MediaQuery.of(context).size.width - 40
+                                  : 240,
+                              height: 300,
+                              color: AppTheme.cardColor,
+                              child: const Center(
+                                child: Icon(Icons.broken_image, size: 48),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -639,7 +675,7 @@ class _AddWeightDialog extends StatefulWidget {
 class _AddWeightDialogState extends State<_AddWeightDialog> {
   final _weightController = TextEditingController();
   final _notesController = TextEditingController();
-  File? _selectedPhoto;
+  final List<File> _selectedPhotos = [];
   bool _isLoading = false;
 
   @override
@@ -714,51 +750,65 @@ class _AddWeightDialogState extends State<_AddWeightDialog> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  if (_selectedPhoto != null)
-                    Stack(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: Image.file(
-                            _selectedPhoto!,
-                            width: double.infinity,
-                            height: 200,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: IconButton(
-                            onPressed: () => setState(() => _selectedPhoto = null),
-                            icon: Icon(Icons.close),
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.black54,
+                  if (_selectedPhotos.isNotEmpty) ...[
+                    SizedBox(
+                      height: 100,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _selectedPhotos.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, i) => Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.file(
+                                _selectedPhotos[i],
+                                width: 100,
+                                height: 100,
+                                fit: BoxFit.cover,
+                              ),
                             ),
-                          ),
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: GestureDetector(
+                                onTap: () =>
+                                    setState(() => _selectedPhotos.removeAt(i)),
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black54,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.close,
+                                      size: 18, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    )
-                  else
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildPhotoButton(
-                            Icons.camera_alt,
-                            'Camera',
-                            () => _pickImage(ImageSource.camera),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildPhotoButton(
-                            Icons.photo_library,
-                            'Gallery',
-                            () => _pickImage(ImageSource.gallery),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
+                    const SizedBox(height: 12),
+                  ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildPhotoButton(
+                          Icons.camera_alt,
+                          'Camera',
+                          _pickCameraPhoto,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildPhotoButton(
+                          Icons.photo_library,
+                          'Gallery',
+                          _pickGalleryPhotos,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 20),
 
                   TextFormField(
@@ -819,20 +869,34 @@ class _AddWeightDialogState extends State<_AddWeightDialog> {
     );
   }
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickGalleryPhotos() async {
     try {
       final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(
-        source: source,
+      final List<XFile> images = await picker.pickMultiImage(
         maxWidth: 1200,
         maxHeight: 1200,
         imageQuality: 85,
       );
+      if (images.isNotEmpty && mounted) {
+        setState(() =>
+            _selectedPhotos.addAll(images.map((x) => File(x.path))));
+      }
+    } catch (e) {
+      debugPrint('Error picking images: $e');
+    }
+  }
 
-      if (image != null) {
-        setState(() {
-          _selectedPhoto = File(image.path);
-        });
+  Future<void> _pickCameraPhoto() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 85,
+      );
+      if (image != null && mounted) {
+        setState(() => _selectedPhotos.add(File(image.path)));
       }
     } catch (e) {
       debugPrint('Error picking image: $e');
@@ -852,17 +916,16 @@ class _AddWeightDialogState extends State<_AddWeightDialog> {
 
     try {
       StorageService storage = context.read<StorageService>();
-      String? photoPath;
-
-      if (_selectedPhoto != null) {
-        photoPath = await storage.savePhoto(_selectedPhoto!, 'weight');
+      final List<String> photoPaths = [];
+      for (final photo in _selectedPhotos) {
+        photoPaths.add(await storage.savePhoto(photo, 'weight'));
       }
 
       WeightEntry entry = WeightEntry(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         date: DateTime.now(),
         weight: weight,
-        photoPath: photoPath,
+        photoPaths: photoPaths,
         notes: _notesController.text.isNotEmpty ? _notesController.text : null,
         unit: storage.settings.weightUnit,
       );

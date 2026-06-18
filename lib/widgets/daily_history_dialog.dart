@@ -289,10 +289,9 @@ class _DailyHistoryDialogState extends State<DailyHistoryDialog> {
     final entries = storage.getAllWeightEntries();
     final dateKey = DateFormat('yyyy-MM-dd').format(date);
     
-    return entries.any((e) => 
-      DateFormat('yyyy-MM-dd').format(e.date) == dateKey && 
-      e.photoPath != null && 
-      e.photoPath!.isNotEmpty
+    return entries.any((e) =>
+      DateFormat('yyyy-MM-dd').format(e.date) == dateKey &&
+      e.allPhotos.isNotEmpty
     );
   }
 
@@ -355,9 +354,8 @@ class _DailyHistoryDialogState extends State<DailyHistoryDialog> {
     final dateKey = DateFormat('yyyy-MM-dd').format(_selectedDate);
     
     final entryWithPhoto = entries.cast<WeightEntry?>().firstWhere(
-      (e) => DateFormat('yyyy-MM-dd').format(e!.date) == dateKey && 
-             e.photoPath != null && 
-             e.photoPath!.isNotEmpty,
+      (e) => DateFormat('yyyy-MM-dd').format(e!.date) == dateKey &&
+             e.allPhotos.isNotEmpty,
       orElse: () => null,
     );
     
@@ -369,11 +367,11 @@ class _DailyHistoryDialogState extends State<DailyHistoryDialog> {
         iconColor: Colors.orange,
         title: 'Progress Photo',
         child: GestureDetector(
-          onTap: () => _showFullScreenPhoto(entryWithPhoto.photoPath!),
+          onTap: () => _showFullScreenPhoto(entryWithPhoto.allPhotos.first),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Image.file(
-              File(entryWithPhoto.photoPath!),
+              File(entryWithPhoto.allPhotos.first),
               height: 200,
               width: double.infinity,
               fit: BoxFit.cover,

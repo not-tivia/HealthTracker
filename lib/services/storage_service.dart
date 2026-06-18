@@ -21,6 +21,7 @@ import '../models/food_library_item.dart';
 import '../models/saved_stretch.dart';
 import '../models/stretch_routine.dart';
 import '../models/default_exercises.dart';
+import '../models/in_progress_workout.dart';
 
 class StorageService extends ChangeNotifier {
   late Box<Workout> _workoutsBox;
@@ -259,12 +260,13 @@ class StorageService extends ChangeNotifier {
     required int durationMinutes,
     String? routineId,
     String? notes,
+    DateTime? date,
   }) async {
     final workout = Workout(
       id: const Uuid().v4(),
       name: workoutName,
       type: workoutType,
-      date: DateTime.now(),
+      date: date ?? DateTime.now(),
       exercises: exercises,
       isCompleted: true,
       durationMinutes: durationMinutes,
@@ -862,6 +864,30 @@ class StorageService extends ChangeNotifier {
     return List<String>.from(order);
   }
 
+  // ============ IN-PROGRESS WORKOUT (autosave / recovery) ============
+  static const String _inProgressWorkoutKey = 'in_progress_workout';
+
+  Future<void> saveInProgressWorkout(InProgressWorkout snapshot) async {
+    await _appDataBox.put(_inProgressWorkoutKey, snapshot.toJsonString());
+  }
+
+  /// Returns the saved in-progress workout, or null if none / unparseable.
+  /// A corrupt record is cleared so it cannot block recovery again.
+  InProgressWorkout? getInProgressWorkout() {
+    final raw = _appDataBox.get(_inProgressWorkoutKey) as String?;
+    if (raw == null) return null;
+    final parsed = InProgressWorkout.tryParse(raw);
+    if (parsed == null) {
+      _appDataBox.delete(_inProgressWorkoutKey);
+      return null;
+    }
+    return parsed;
+  }
+
+  Future<void> clearInProgressWorkout() async {
+    await _appDataBox.delete(_inProgressWorkoutKey);
+  }
+
   // ============ WORKOUT ROTATION ORDER ============
   Future<void> saveWorkoutRotationOrder(List<String> order) async {
     await _appDataBox.put('workout_rotation_order', order);
@@ -884,35 +910,49 @@ class StorageService extends ChangeNotifier {
     return _appDataBox.get('last_completed_rotation_index') as int?;
   }
 
-  /// Returns the next routine ID in the rotation after [lastRoutineId].
-  /// Falls back to saved rotation index if lastRoutineId not found.
-  /// Returns null if rotation is empty.
-  String? getNextInRotation({required String? lastRoutineId}) {
+  /// Index within the rotation order of the most recently completed rotation
+  /// workout. Derived from real workout history (newest first) so it is immune
+  /// to a stale saved pointer; falls back to the saved pointer, then null when
+  /// no rotation workout has been completed yet.
+  int? _resolveLastCompletedRotationIndex() {
     final order = getWorkoutRotationOrder();
     if (order.isEmpty) return null;
 
-    if (lastRoutineId != null) {
-      final index = order.indexOf(lastRoutineId);
-      if (index != -1) {
-        return order[(index + 1) % order.length];
+    // Most recent completed workout whose routine is still in the rotation.
+    for (final workout in getAllWorkouts()) {
+      if (workout.routineId != null) {
+        final index = order.indexOf(workout.routineId!);
+        if (index != -1) return index;
       }
     }
 
-    // Fallback to saved index pointer
+    // Fall back to the explicitly saved pointer (set on each completion).
     final savedIndex = getLastCompletedRotationIndex();
-    if (savedIndex != null && savedIndex < order.length) {
-      return order[(savedIndex + 1) % order.length];
+    if (savedIndex != null && savedIndex >= 0 && savedIndex < order.length) {
+      return savedIndex;
     }
 
-    return order.first;
+    return null;
+  }
+
+  /// Returns the next routine ID in the rotation: the one immediately after the
+  /// most recently completed rotation workout. If nothing has been completed
+  /// yet, returns the first routine. Returns null only if the rotation is empty.
+  String? getNextInRotation() {
+    final order = getWorkoutRotationOrder();
+    if (order.isEmpty) return null;
+
+    final lastIndex = _resolveLastCompletedRotationIndex();
+    if (lastIndex == null) return order.first;
+    return order[(lastIndex + 1) % order.length];
   }
 
   /// Returns up to 3 routine IDs starting from the next in rotation.
-  List<String> getRotationCircles({required String? lastRoutineId}) {
+  List<String> getRotationCircles() {
     final order = getWorkoutRotationOrder();
     if (order.isEmpty) return [];
 
-    final nextId = getNextInRotation(lastRoutineId: lastRoutineId);
+    final nextId = getNextInRotation();
     if (nextId == null) return [];
 
     final startIndex = order.indexOf(nextId);

@@ -283,32 +283,6 @@ class _WorkoutTabState extends State<WorkoutTab> {
     }
   }
 
-  /// Returns the routineId of the most recent workout that is in the
-  /// active rotation. Skips workouts with null routineId or routines
-  /// not in the rotation, so the suggestion always advances correctly.
-  /// Falls back to saved rotation index if no matching workout found.
-  String? get _lastCompletedRoutineId {
-    final storage = context.read<StorageService>();
-    final rotationOrder = storage.getWorkoutRotationOrder();
-    if (rotationOrder.isEmpty) return null;
-
-    // Find the most recent workout whose routine is in the rotation
-    if (_workouts.isNotEmpty) {
-      for (final workout in _workouts) {
-        if (workout.routineId != null && rotationOrder.contains(workout.routineId)) {
-          return workout.routineId;
-        }
-      }
-    }
-
-    // Fallback: use saved rotation index pointer
-    final savedIndex = storage.getLastCompletedRotationIndex();
-    if (savedIndex != null && savedIndex < rotationOrder.length) {
-      return rotationOrder[savedIndex];
-    }
-    return null;
-  }
-
   /// Whether any workout (strength or cardio) was done today
   bool get _didWorkoutToday {
     final now = DateTime.now();
@@ -1059,7 +1033,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
       );
     }
 
-    final nextId = storage.getNextInRotation(lastRoutineId: _lastCompletedRoutineId);
+    final nextId = storage.getNextInRotation();
 
     String? routineName;
     if (nextId != null) {
@@ -1091,8 +1065,8 @@ class _WorkoutTabState extends State<WorkoutTab> {
   }
 
   Widget _buildWorkoutCircles(StorageService storage) {
-    final circleIds = storage.getRotationCircles(lastRoutineId: _lastCompletedRoutineId);
-    final nextId = storage.getNextInRotation(lastRoutineId: _lastCompletedRoutineId);
+    final circleIds = storage.getRotationCircles();
+    final nextId = storage.getNextInRotation();
 
     final circles = circleIds.map((id) {
       final routine = _routines.where((r) => r.id == id).firstOrNull;
@@ -1146,7 +1120,7 @@ class _WorkoutTabState extends State<WorkoutTab> {
       }
     } else {
       // No workout today - suggest warm-up for the next scheduled workout
-      final nextId = storage.getNextInRotation(lastRoutineId: _lastCompletedRoutineId);
+      final nextId = storage.getNextInRotation();
       relevantRoutineId = nextId;
       if (nextId != null) {
         // Check explicit warm-up pairing first

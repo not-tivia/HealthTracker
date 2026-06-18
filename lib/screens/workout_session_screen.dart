@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/in_progress_workout.dart';
 import '../models/workout.dart';
 import '../models/workout_history.dart';
 import '../models/saved_exercise.dart';
@@ -19,19 +21,22 @@ class WorkoutSessionScreen extends StatefulWidget {
   final String routineName;
   final String routineId;
   final List<SavedExercise> exercises;
+  final InProgressWorkout? resumeFrom;
 
   const WorkoutSessionScreen({
     super.key,
     required this.routineName,
     required this.routineId,
     required this.exercises,
+    this.resumeFrom,
   });
 
   @override
   State<WorkoutSessionScreen> createState() => _WorkoutSessionScreenState();
 }
 
-class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
+class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
+    with WidgetsBindingObserver {
   late List<SavedExercise> _exercises;
   int _currentExerciseIndex = 0;
   final List<Exercise> _completedExercises = [];
@@ -41,13 +46,21 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   Map<String, ExerciseHistory>? _exerciseHistory;
   List<Workout> _allWorkouts = [];
   bool _isLoading = true;
-  final DateTime _startTime = DateTime.now();
+  late DateTime _startTime = DateTime.now();
+  Timer? _autosaveDebounce;
+  // Cached so the async autosave path never reads from a torn-down context.
+  late final StorageService _storage;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _storage = context.read<StorageService>();
     _exercises = List.from(widget.exercises);
     _initializeSets();
+    if (widget.resumeFrom != null) {
+      _restoreFrom(widget.resumeFrom!);
+    }
     _loadHistory();
   }
 
@@ -63,6 +76,46 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
   }
 
+  /// Re-hydrate controllers, set lists, and position from a saved snapshot.
+  /// Matches by exercise index (the resumed exercise list is reconstructed in
+  /// the same order). Resizes each exercise's set lists to the saved counts.
+  void _restoreFrom(InProgressWorkout snapshot) {
+    _startTime = snapshot.startTime;
+    final count = _exercises.length < snapshot.exercises.length
+        ? _exercises.length
+        : snapshot.exercises.length;
+    for (int i = 0; i < count; i++) {
+      final savedSets = snapshot.exercises[i].sets;
+      // Dispose the default controllers for this exercise.
+      for (final c in _weightControllers[i] ?? const <TextEditingController>[]) {
+        c.dispose();
+      }
+      for (final c in _repControllers[i] ?? const <TextEditingController>[]) {
+        c.dispose();
+      }
+      // Rebuild sets + controllers from the snapshot.
+      _exerciseSets[i] = [
+        for (int s = 0; s < savedSets.length; s++)
+          ExerciseSet(
+            setNumber: s + 1,
+            weight: savedSets[s].weight,
+            reps: savedSets[s].reps,
+          ),
+      ];
+      _weightControllers[i] = [
+        for (final s in savedSets)
+          TextEditingController(
+              text: s.weight > 0 ? s.weight.toStringAsFixed(0) : ''),
+      ];
+      _repControllers[i] = [
+        for (final s in savedSets)
+          TextEditingController(text: s.reps > 0 ? '${s.reps}' : ''),
+      ];
+    }
+    _currentExerciseIndex =
+        snapshot.currentExerciseIndex.clamp(0, _exercises.length - 1);
+  }
+
   Future<void> _loadHistory() async {
     final storage = context.read<StorageService>();
     final history = await storage.getExerciseHistory();
@@ -74,6 +127,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       _isLoading = false;
     });
     for (int i = 0; i < _exercises.length; i++) {
+      // Don't overwrite weights already restored from a resumed snapshot.
+      if (widget.resumeFrom != null && i < widget.resumeFrom!.exercises.length) {
+        continue;
+      }
       final lastHistory = history[_exercises[i].name];
       if (lastHistory != null) {
         // Use minWeight to help users complete full sets
@@ -92,6 +149,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
   @override
   void dispose() {
+    _autosaveDebounce?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     for (var controllers in _weightControllers.values) {
       for (var c in controllers) c.dispose();
     }
@@ -99,6 +158,58 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       for (var c in controllers) c.dispose();
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _autosave();
+    }
+  }
+
+  /// Build a serializable snapshot of the live session from the controllers.
+  InProgressWorkout _snapshot() {
+    final exercises = <InProgressExercise>[];
+    for (int i = 0; i < _exercises.length; i++) {
+      final ex = _exercises[i];
+      final weightCs = _weightControllers[i] ?? const [];
+      final repCs = _repControllers[i] ?? const [];
+      final sets = <InProgressSet>[];
+      for (int s = 0; s < weightCs.length; s++) {
+        final weight = double.tryParse(weightCs[s].text) ?? 0;
+        final reps =
+            s < repCs.length ? (int.tryParse(repCs[s].text) ?? 0) : 0;
+        sets.add(InProgressSet(weight: weight, reps: reps));
+      }
+      exercises.add(InProgressExercise(
+        savedExerciseId: ex.id,
+        name: ex.name,
+        targetSets: ex.defaultSets,
+        targetReps: ex.repsDisplay,
+        youtubeUrl: ex.youtubeUrl,
+        sets: sets,
+      ));
+    }
+    return InProgressWorkout(
+      routineId: widget.routineId,
+      routineName: widget.routineName,
+      startTime: _startTime,
+      lastSaved: DateTime.now(),
+      currentExerciseIndex: _currentExerciseIndex,
+      exercises: exercises,
+    );
+  }
+
+  void _autosave() {
+    if (!mounted) return;
+    _storage.saveInProgressWorkout(_snapshot());
+  }
+
+  void _scheduleAutosave() {
+    _autosaveDebounce?.cancel();
+    _autosaveDebounce = Timer(const Duration(seconds: 1), _autosave);
   }
 
   SavedExercise get _currentExercise => _exercises[_currentExerciseIndex];
@@ -378,6 +489,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     onChanged: (v) {
                       final weight = double.tryParse(v) ?? 0;
                       setState(() => currentSets[index] = ExerciseSet(setNumber: set.setNumber, weight: weight, reps: set.reps));
+                      _scheduleAutosave();
                     },
                   ),
                 ),
@@ -397,6 +509,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     onChanged: (v) {
                       final reps = int.tryParse(v) ?? 0;
                       setState(() => currentSets[index] = ExerciseSet(setNumber: set.setNumber, weight: set.weight, reps: reps));
+                      _scheduleAutosave();
                     },
                   ),
                 ),
@@ -649,6 +762,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       _weightControllers[_currentExerciseIndex]!.add(TextEditingController());
       _repControllers[_currentExerciseIndex]!.add(TextEditingController(text: '${_currentExercise.defaultMinReps}'));
     });
+    _autosave();
   }
 
   void _removeSet(int index) {
@@ -661,16 +775,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       _repControllers[_currentExerciseIndex]![index].dispose();
       _repControllers[_currentExerciseIndex]!.removeAt(index);
     });
+    _autosave();
   }
 
   void _previousExercise() {
     _saveCurrentExercise();
     setState(() => _currentExerciseIndex--);
+    _autosave();
   }
 
   void _nextExercise() {
     _saveCurrentExercise();
     setState(() => _currentExerciseIndex++);
+    _autosave();
   }
 
   void _saveCurrentExercise() {
@@ -735,6 +852,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       durationMinutes: duration.inMinutes,
       routineId: widget.routineId,
     );
+    await storage.clearInProgressWorkout();
 
     if (mounted) _showCompletionDialog(duration);
   }
@@ -862,6 +980,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Keep Going')),
           FilledButton(
             onPressed: () {
+              context.read<StorageService>().clearInProgressWorkout();
               Navigator.pop(context);
               Navigator.pop(context);
             },
