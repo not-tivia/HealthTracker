@@ -107,26 +107,30 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              storage.clearInProgressWorkout();
-              Navigator.pop(dialogContext);
-            },
-            child: const Text('Discard'),
-          ),
-          TextButton(
             onPressed: () async {
-              await storage.saveWorkoutSession(
-                workoutName: snapshot.routineName,
-                workoutType: snapshot.routineName,
-                exercises: snapshot.toExercises(),
-                durationMinutes:
-                    snapshot.lastSaved.difference(snapshot.startTime).inMinutes,
-                routineId: snapshot.routineId,
-                date: snapshot.startTime,
-              );
               await storage.clearInProgressWorkout();
               if (dialogContext.mounted) Navigator.pop(dialogContext);
             },
+            child: const Text('Discard'),
+          ),
+          // Nothing to save if no sets were logged - leave only Resume/Discard.
+          TextButton(
+            onPressed: logged == 0
+                ? null
+                : () async {
+                    await storage.saveWorkoutSession(
+                      workoutName: snapshot.routineName,
+                      workoutType: snapshot.routineName,
+                      exercises: snapshot.toExercises(),
+                      durationMinutes: snapshot.lastSaved
+                          .difference(snapshot.startTime)
+                          .inMinutes,
+                      routineId: snapshot.routineId,
+                      date: snapshot.startTime,
+                    );
+                    await storage.clearInProgressWorkout();
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  },
             child: const Text('Save what I logged'),
           ),
           FilledButton(
