@@ -21,6 +21,7 @@ import '../models/food_library_item.dart';
 import '../models/saved_stretch.dart';
 import '../models/stretch_routine.dart';
 import '../models/default_exercises.dart';
+import '../models/in_progress_workout.dart';
 
 class StorageService extends ChangeNotifier {
   late Box<Workout> _workoutsBox;
@@ -259,12 +260,13 @@ class StorageService extends ChangeNotifier {
     required int durationMinutes,
     String? routineId,
     String? notes,
+    DateTime? date,
   }) async {
     final workout = Workout(
       id: const Uuid().v4(),
       name: workoutName,
       type: workoutType,
-      date: DateTime.now(),
+      date: date ?? DateTime.now(),
       exercises: exercises,
       isCompleted: true,
       durationMinutes: durationMinutes,
@@ -860,6 +862,30 @@ class StorageService extends ChangeNotifier {
     final order = _appDataBox.get('stretch_routine_order');
     if (order == null) return [];
     return List<String>.from(order);
+  }
+
+  // ============ IN-PROGRESS WORKOUT (autosave / recovery) ============
+  static const String _inProgressWorkoutKey = 'in_progress_workout';
+
+  Future<void> saveInProgressWorkout(InProgressWorkout snapshot) async {
+    await _appDataBox.put(_inProgressWorkoutKey, snapshot.toJsonString());
+  }
+
+  /// Returns the saved in-progress workout, or null if none / unparseable.
+  /// A corrupt record is cleared so it cannot block recovery again.
+  InProgressWorkout? getInProgressWorkout() {
+    final raw = _appDataBox.get(_inProgressWorkoutKey) as String?;
+    if (raw == null) return null;
+    final parsed = InProgressWorkout.tryParse(raw);
+    if (parsed == null) {
+      _appDataBox.delete(_inProgressWorkoutKey);
+      return null;
+    }
+    return parsed;
+  }
+
+  Future<void> clearInProgressWorkout() async {
+    await _appDataBox.delete(_inProgressWorkoutKey);
   }
 
   // ============ WORKOUT ROTATION ORDER ============
