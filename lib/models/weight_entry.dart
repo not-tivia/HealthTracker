@@ -38,7 +38,8 @@ class WeightEntry extends HiveObject {
   /// All photos for this entry: the new list if present, otherwise the legacy
   /// single photo, otherwise empty. Every reader should use this.
   List<String> get allPhotos {
-    if (photoPaths.isNotEmpty) return photoPaths;
+    final fromList = photoPaths.where((p) => p.isNotEmpty).toList();
+    if (fromList.isNotEmpty) return fromList;
     if (photoPath != null && photoPath!.isNotEmpty) return [photoPath!];
     return [];
   }
