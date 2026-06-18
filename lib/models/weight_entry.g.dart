@@ -23,13 +23,14 @@ class WeightEntryAdapter extends TypeAdapter<WeightEntry> {
       photoPath: fields[3] as String?,
       notes: fields[4] as String?,
       unit: fields[5] as String,
+      photoPaths: (fields[6] as List?)?.cast<String>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, WeightEntry obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -41,7 +42,9 @@ class WeightEntryAdapter extends TypeAdapter<WeightEntry> {
       ..writeByte(4)
       ..write(obj.notes)
       ..writeByte(5)
-      ..write(obj.unit);
+      ..write(obj.unit)
+      ..writeByte(6)
+      ..write(obj.photoPaths);
   }
 
   @override
