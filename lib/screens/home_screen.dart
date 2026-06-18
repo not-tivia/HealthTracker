@@ -168,6 +168,13 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }).toList();
 
+    // Corrupt/empty snapshot - nothing to resume into; drop it so it can't
+    // prompt again.
+    if (exercises.isEmpty) {
+      storage.clearInProgressWorkout();
+      return;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
