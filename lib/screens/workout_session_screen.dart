@@ -21,12 +21,14 @@ class WorkoutSessionScreen extends StatefulWidget {
   final String routineName;
   final String routineId;
   final List<SavedExercise> exercises;
+  final InProgressWorkout? resumeFrom;
 
   const WorkoutSessionScreen({
     super.key,
     required this.routineName,
     required this.routineId,
     required this.exercises,
+    this.resumeFrom,
   });
 
   @override
@@ -56,6 +58,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     _storage = context.read<StorageService>();
     _exercises = List.from(widget.exercises);
     _initializeSets();
+    if (widget.resumeFrom != null) {
+      _restoreFrom(widget.resumeFrom!);
+    }
     _loadHistory();
   }
 
@@ -69,6 +74,46 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       _weightControllers[i] = List.generate(exercise.defaultSets, (_) => TextEditingController());
       _repControllers[i] = List.generate(exercise.defaultSets, (_) => TextEditingController(text: '${exercise.defaultMinReps}'));
     }
+  }
+
+  /// Re-hydrate controllers, set lists, and position from a saved snapshot.
+  /// Matches by exercise index (the resumed exercise list is reconstructed in
+  /// the same order). Resizes each exercise's set lists to the saved counts.
+  void _restoreFrom(InProgressWorkout snapshot) {
+    _startTime = snapshot.startTime;
+    final count = _exercises.length < snapshot.exercises.length
+        ? _exercises.length
+        : snapshot.exercises.length;
+    for (int i = 0; i < count; i++) {
+      final savedSets = snapshot.exercises[i].sets;
+      // Dispose the default controllers for this exercise.
+      for (final c in _weightControllers[i] ?? const <TextEditingController>[]) {
+        c.dispose();
+      }
+      for (final c in _repControllers[i] ?? const <TextEditingController>[]) {
+        c.dispose();
+      }
+      // Rebuild sets + controllers from the snapshot.
+      _exerciseSets[i] = [
+        for (int s = 0; s < savedSets.length; s++)
+          ExerciseSet(
+            setNumber: s + 1,
+            weight: savedSets[s].weight,
+            reps: savedSets[s].reps,
+          ),
+      ];
+      _weightControllers[i] = [
+        for (final s in savedSets)
+          TextEditingController(
+              text: s.weight > 0 ? s.weight.toStringAsFixed(0) : ''),
+      ];
+      _repControllers[i] = [
+        for (final s in savedSets)
+          TextEditingController(text: s.reps > 0 ? '${s.reps}' : ''),
+      ];
+    }
+    _currentExerciseIndex =
+        snapshot.currentExerciseIndex.clamp(0, _exercises.length - 1);
   }
 
   Future<void> _loadHistory() async {
