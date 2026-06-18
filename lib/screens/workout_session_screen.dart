@@ -127,6 +127,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       _isLoading = false;
     });
     for (int i = 0; i < _exercises.length; i++) {
+      // Don't overwrite weights already restored from a resumed snapshot.
+      if (widget.resumeFrom != null && i < widget.resumeFrom!.exercises.length) {
+        continue;
+      }
       final lastHistory = history[_exercises[i].name];
       if (lastHistory != null) {
         // Use minWeight to help users complete full sets
