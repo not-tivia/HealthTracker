@@ -582,7 +582,9 @@ class _WeightEntryDetails extends StatelessWidget {
                             height: 300,
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) => Container(
-                              width: 240,
+                              width: entry.allPhotos.length == 1
+                                  ? MediaQuery.of(context).size.width - 40
+                                  : 240,
                               height: 300,
                               color: AppTheme.cardColor,
                               child: const Center(
