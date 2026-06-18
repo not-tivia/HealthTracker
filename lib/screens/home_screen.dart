@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../models/in_progress_workout.dart';
+import '../models/saved_exercise.dart';
+import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import 'today_tab.dart';
 import 'progress_tab.dart';
 import 'tools_tab.dart';
 import 'workout_tab.dart';
 import 'settings_tab.dart';
+import 'workout_session_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,6 +29,24 @@ class _HomeScreenState extends State<HomeScreen> {
     const WorkoutTab(),
     const SettingsTab(),
   ];
+
+  bool _recoveryChecked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkForRecovery());
+  }
+
+  Future<void> _checkForRecovery() async {
+    if (_recoveryChecked || !mounted) return;
+    _recoveryChecked = true;
+    final storage = context.read<StorageService>();
+    final snapshot = storage.getInProgressWorkout();
+    if (snapshot == null) return;
+    if (!mounted) return;
+    await _showRecoveryDialog(storage, snapshot);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +80,98 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  String _ageLabel(DateTime start) {
+    final diff = DateTime.now().difference(start);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return '${diff.inHours} hr ago';
+    return '${diff.inDays} day${diff.inDays == 1 ? '' : 's'} ago';
+  }
+
+  Future<void> _showRecoveryDialog(
+      StorageService storage, InProgressWorkout snapshot) async {
+    final logged = snapshot.loggedExerciseCount;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Unfinished workout'),
+        content: Text(
+          '${snapshot.routineName} - started ${_ageLabel(snapshot.startTime)}, '
+          '$logged exercise${logged == 1 ? '' : 's'} logged.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              storage.clearInProgressWorkout();
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Discard'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await storage.saveWorkoutSession(
+                workoutName: snapshot.routineName,
+                workoutType: snapshot.routineName,
+                exercises: snapshot.toExercises(),
+                durationMinutes:
+                    snapshot.lastSaved.difference(snapshot.startTime).inMinutes,
+                routineId: snapshot.routineId,
+                date: snapshot.startTime,
+              );
+              await storage.clearInProgressWorkout();
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+            child: const Text('Save what I logged'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _resumeWorkout(storage, snapshot);
+            },
+            child: const Text('Resume'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _resumeWorkout(StorageService storage, InProgressWorkout snapshot) {
+    final exercises = snapshot.exercises.map((ie) {
+      final saved = ie.savedExerciseId == null
+          ? null
+          : storage.getSavedExerciseById(ie.savedExerciseId!);
+      if (saved != null) return saved;
+      // Saved exercise was deleted - synthesize a stand-in from the snapshot.
+      final parts = ie.targetReps.split('-');
+      final minReps =
+          int.tryParse(parts.first.replaceAll(RegExp(r'[^0-9]'), '')) ?? 8;
+      final maxReps = parts.length > 1
+          ? (int.tryParse(parts.last.replaceAll(RegExp(r'[^0-9]'), '')) ?? minReps)
+          : minReps;
+      return SavedExercise(
+        id: ie.savedExerciseId ?? ie.name,
+        name: ie.name,
+        defaultSets: ie.targetSets,
+        defaultMinReps: minReps,
+        defaultMaxReps: maxReps,
+        youtubeUrl: ie.youtubeUrl,
+      );
+    }).toList();
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WorkoutSessionScreen(
+          routineName: snapshot.routineName,
+          routineId: snapshot.routineId,
+          exercises: exercises,
+          resumeFrom: snapshot,
         ),
       ),
     );
