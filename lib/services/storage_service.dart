@@ -22,6 +22,7 @@ import '../models/saved_stretch.dart';
 import '../models/stretch_routine.dart';
 import '../models/default_exercises.dart';
 import '../models/in_progress_workout.dart';
+import 'rotation_planner.dart';
 
 class StorageService extends ChangeNotifier {
   late Box<Workout> _workoutsBox;
@@ -274,15 +275,6 @@ class StorageService extends ChangeNotifier {
       notes: notes,
     );
     await saveWorkout(workout);
-
-    // Update rotation pointer if this workout is in the rotation
-    if (routineId != null) {
-      final rotationOrder = getWorkoutRotationOrder();
-      final rotationIndex = rotationOrder.indexOf(routineId);
-      if (rotationIndex != -1) {
-        await saveLastCompletedRotationIndex(rotationIndex);
-      }
-    }
   }
 
   // ============ WORKOUT HISTORY ============
@@ -891,8 +883,6 @@ class StorageService extends ChangeNotifier {
   // ============ WORKOUT ROTATION ORDER ============
   Future<void> saveWorkoutRotationOrder(List<String> order) async {
     await _appDataBox.put('workout_rotation_order', order);
-    // Reset rotation pointer when order changes
-    await _appDataBox.delete('last_completed_rotation_index');
     notifyListeners();
   }
 
@@ -902,66 +892,40 @@ class StorageService extends ChangeNotifier {
     return List<String>.from(order);
   }
 
-  Future<void> saveLastCompletedRotationIndex(int index) async {
-    await _appDataBox.put('last_completed_rotation_index', index);
-  }
-
-  int? getLastCompletedRotationIndex() {
-    return _appDataBox.get('last_completed_rotation_index') as int?;
-  }
-
-  /// Index within the rotation order of the most recently completed rotation
-  /// workout. Derived from real workout history (newest first) so it is immune
-  /// to a stale saved pointer; falls back to the saved pointer, then null when
-  /// no rotation workout has been completed yet.
-  int? _resolveLastCompletedRotationIndex() {
-    final order = getWorkoutRotationOrder();
-    if (order.isEmpty) return null;
-
-    // Most recent completed workout whose routine is still in the rotation.
+  /// Most recent completion date per rotation routine, derived from real workout
+  /// history. Only completed workouts whose routine is still in the rotation
+  /// count. getAllWorkouts() is newest-first, so the first hit per ID is its most
+  /// recent completion.
+  Map<String, DateTime> _lastDoneByRoutineId(Set<String> rotationIds) {
+    final result = <String, DateTime>{};
     for (final workout in getAllWorkouts()) {
-      if (workout.routineId != null) {
-        final index = order.indexOf(workout.routineId!);
-        if (index != -1) return index;
+      final id = workout.routineId;
+      if (id == null || !workout.isCompleted || !rotationIds.contains(id)) {
+        continue;
       }
+      result.putIfAbsent(id, () => workout.date);
     }
-
-    // Fall back to the explicitly saved pointer (set on each completion).
-    final savedIndex = getLastCompletedRotationIndex();
-    if (savedIndex != null && savedIndex >= 0 && savedIndex < order.length) {
-      return savedIndex;
-    }
-
-    return null;
+    return result;
   }
 
-  /// Returns the next routine ID in the rotation: the one immediately after the
-  /// most recently completed rotation workout. If nothing has been completed
-  /// yet, returns the first routine. Returns null only if the rotation is empty.
+  /// Returns the next routine ID to suggest: the rotation routine completed
+  /// longest ago (never-done routines first; ties broken by rotation order).
+  /// Returns null only if the rotation is empty.
   String? getNextInRotation() {
     final order = getWorkoutRotationOrder();
     if (order.isEmpty) return null;
-
-    final lastIndex = _resolveLastCompletedRotationIndex();
-    if (lastIndex == null) return order.first;
-    return order[(lastIndex + 1) % order.length];
+    final ranked =
+        rankRotationByMostOverdue(order, _lastDoneByRoutineId(order.toSet()));
+    return ranked.isEmpty ? null : ranked.first;
   }
 
-  /// Returns up to 3 routine IDs starting from the next in rotation.
+  /// Returns up to 3 routine IDs, most-overdue first.
   List<String> getRotationCircles() {
     final order = getWorkoutRotationOrder();
     if (order.isEmpty) return [];
-
-    final nextId = getNextInRotation();
-    if (nextId == null) return [];
-
-    final startIndex = order.indexOf(nextId);
-    final count = order.length.clamp(0, 3);
-    final result = <String>[];
-    for (int i = 0; i < count; i++) {
-      result.add(order[(startIndex + i) % order.length]);
-    }
-    return result;
+    final ranked =
+        rankRotationByMostOverdue(order, _lastDoneByRoutineId(order.toSet()));
+    return ranked.take(3).toList();
   }
 
   // Stretch-workout pairings
